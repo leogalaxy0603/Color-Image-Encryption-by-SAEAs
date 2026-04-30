@@ -7,9 +7,9 @@ The main entry point is `main_auto.m`.
 ## Citation
 
 If you use this code, please cite:
-
+```text
 Liu, Gao-Yuan, Ying Yu, Hui-Qi Zhao, Tian-Yu Gao, and Zhi-Yang Chen. 2025. "A Novel Color Image Encryption Method Based on Hierarchical Surrogate-Assisted Optimization" Electronics 14, no. 23: 4716. https://doi.org/10.3390/electronics14234716
-
+```
 ## Overview
 
 The encryption workflow contains the following major steps:
