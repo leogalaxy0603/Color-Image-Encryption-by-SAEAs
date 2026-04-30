@@ -1,0 +1,1865 @@
+
+
+% ====================== FILE: main_auto.m ======================
+
+%% ======================= main.m =======================
+% å½©è‰²å›¾åƒåŠ å¯†-è§£å¯†ä¸è¯„ä¼°ï¼ˆé‡‡ç”¨ HSADE_ImprovedQUATRE ä¼˜åŒ–å‚æ•°ï¼‰
+% ç»ˆæ­¢æ¡ä»¶ï¼šæœ€å¤§å‡½æ•°è¯„ä¼°æ¬¡æ•° MaxFEs
+% -------------------------------------------------------
+clear; close all; clc;
+
+%% =================== æ–‡ä»¶åé…ç½®åŒºåŸŸ ===================
+% â˜…â˜…â˜… åªéœ€è¦åœ¨è¿™é‡Œä¿®æ”¹ä¸€æ¬¡å³å¯ â˜…â˜…â˜…
+BASE_IMAGE_NAME = 'image_Baboon512rgb';           % åŸºç¡€å›¾åƒåç§°ï¼ˆä¸å«æ‰©å±•åï¼‰
+IMAGE_EXT = 'png';                 % å›¾åƒæ‰©å±•å
+INPUT_FOLDER = '';                 % è¾“å…¥æ–‡ä»¶å¤¹è·¯å¾„ï¼ˆç©ºè¡¨ç¤ºå½“å‰ç›®å½•ï¼‰
+OUTPUT_FOLDER = '';                % è¾“å‡ºæ–‡ä»¶å¤¹è·¯å¾„ï¼ˆç©ºè¡¨ç¤ºå½“å‰ç›®å½•ï¼‰
+
+% è‡ªåŠ¨ç”Ÿæˆæ‰€æœ‰ç›¸å…³æ–‡ä»¶å
+if ~isempty(INPUT_FOLDER) && ~endsWith(INPUT_FOLDER, filesep)
+    INPUT_FOLDER = [INPUT_FOLDER, filesep];
+end
+if ~isempty(OUTPUT_FOLDER) && ~endsWith(OUTPUT_FOLDER, filesep)
+    OUTPUT_FOLDER = [OUTPUT_FOLDER, filesep];
+end
+
+% æ„å»ºå®Œæ•´æ–‡ä»¶è·¯å¾„
+ORIGINAL_IMAGE  = [INPUT_FOLDER, BASE_IMAGE_NAME, '.', IMAGE_EXT];
+ENCRYPTED_IMAGE = [OUTPUT_FOLDER, 'HSADE_en_', BASE_IMAGE_NAME, '.', IMAGE_EXT];
+DECRYPTED_IMAGE = [OUTPUT_FOLDER, 'HSADE_de_', BASE_IMAGE_NAME, '.', IMAGE_EXT];
+LOG_FILE        = [OUTPUT_FOLDER, 'HSADE_image_', BASE_IMAGE_NAME, '_results_diary.txt'];
+
+% æ˜¾ç¤ºé…ç½®ä¿¡æ¯
+fprintf('========== æ–‡ä»¶é…ç½®ä¿¡æ¯ ==========\n');
+fprintf('åŸå§‹å›¾åƒ: %s\n', ORIGINAL_IMAGE);
+fprintf('åŠ å¯†å›¾åƒ: %s\n', ENCRYPTED_IMAGE);
+fprintf('è§£å¯†å›¾åƒ: %s\n', DECRYPTED_IMAGE);
+fprintf('æ—¥å¿—æ–‡ä»¶: %s\n', LOG_FILE);
+fprintf('===================================\n\n');
+
+%% 0) è¯»å›¾ä¸é€šé“åˆ†ç¦»
+% æ£€æŸ¥åŸå§‹å›¾åƒæ˜¯å¦å­˜åœ¨
+if ~exist(ORIGINAL_IMAGE, 'file')
+    error('é”™è¯¯ï¼šæ‰¾ä¸åˆ°å›¾åƒæ–‡ä»¶ "%s"', ORIGINAL_IMAGE);
+end
+
+I = imread(ORIGINAL_IMAGE);         % è¯»å–å›¾åƒ
+I1 = I(:,:,1);  % R
+I2 = I(:,:,2);  % G
+I3 = I(:,:,3);  % B
+
+% å¯è§†åŒ–åŸå§‹é€šé“ç›´æ–¹å›¾
+figure; imhist(I1); title('åŸå§‹å›¾ç‰‡Ré€šé“ç›´æ–¹å›¾');
+figure; imhist(I2); title('åŸå§‹å›¾ç‰‡Gé€šé“ç›´æ–¹å›¾');
+figure; imhist(I3); title('åŸå§‹å›¾ç‰‡Bé€šé“ç›´æ–¹å›¾');
+
+% å°ºå¯¸ä¿¡æ¯
+[M,N] = size(I1);
+t = 4;                 % åˆ†å—å¤§å°
+
+%% 1) åŸå§‹å›¾åƒä¿¡æ¯ç†µä¸ç›¸å…³æ€§
+[xxs1_R, xxs1_G, xxs1_B] = Calculate_information_entropy(I1, I2, I3);
+NN = 5000;   % ç›¸å…³æ€§é‡‡æ ·å¯¹æ•°
+[RXY1_SP_R,RXY1_CZ_R,RXY1_DJX_R, ...
+ RXY1_SP_G,RXY1_CZ_G,RXY1_DJX_G, ...
+ RXY1_SP_B,RXY1_CZ_B,RXY1_DJX_B, x1, y1] = Orginal_Correlation_analysis(NN, M, N, I1, I2, I3);
+
+%% 2) è¡¥é›¶åˆ°å¯è¢« t æ•´é™¤çš„å°ºå¯¸
+[I1, I2, I3, M1, N1] = zero_padding(M, N, I1, I2, I3, t);
+[M, N] = size(I1);                 % è¡¥é›¶åçš„å°ºå¯¸
+SUM = M * N;                       % åƒç´ æ€»æ•°
+
+%% 3) Logistic æ··æ²Œåºåˆ—ä¸éšæœºçŸ©é˜µ R
+u  = 3.9999;                                   % Logistic å‚æ•°
+x0 = (sum(I1(:)) + sum(I2(:))) / (255*SUM*2);  % åˆå€¼ï¼ˆä¸åƒç´ ç›¸å…³ï¼‰
+x0 = floor(x0*1e4)/1e4;                         % ä¿ç•™ 4 ä½å°æ•°
+
+p = zeros(1, SUM+1000);
+p(1) = x0;
+for i=1:SUM+999
+    p(i+1) = u * p(i) * (1 - p(i));
+end
+p = p(1001:end);                    % ä¸¢å¼ƒå‰ 1000 ä¸ªä»¥æ”¹å–„éšæœºæ€§
+p = mod(round(p*1e4), 256);         % æ˜ å°„åˆ° 0~255
+R = reshape(p, N, M)';              % MÃ—N éšæœºçŸ©é˜µï¼ˆuint8 æ©ç çš„æ¥æºï¼‰
+
+%% 4) â€”â€” ä¼˜åŒ–ç®—æ³•ï¼šHSADE_ImprovedQUATREï¼ˆå–ä»£ SCAï¼‰ â€”â€”
+% ç»´åº¦ï¼šä¸ output() ä¸­çš„å‚æ•°æ˜ å°„ä¸€è‡´ï¼ˆåŸä»£ç ä¸º dim=4ï¼‰
+dim = 4;
+LB  = -ones(1, dim);
+UB  =  ones(1, dim);
+
+% æœ€å¤§è¯„ä¼°æ¬¡æ•°ï¼ˆä¸»ç»ˆæ­¢æ¡ä»¶ï¼‰â€”â€”å¯æŒ‰éœ€æ±‚è°ƒæ•´
+MaxFEs = 300;   % å»ºè®®èµ·æ­¥ 200~1000ï¼Œè¶Šå¤§è¶Šå……åˆ†
+
+% é€‚åº”åº¦ï¼ˆæ ‡é‡ï¼‰ï¼šç»™å®šå‚æ•° x â†’ ä¸€æ¬¡åŠ å¯†ï¼ˆä¸åšæŠ—è£å‰ªï¼‰â†’ ç›¸å…³æ€§ â†’ fobj
+FUN = @(x) local_encrypt_fitness(x, M, N, t, I1, I2, I3, SUM, R, u, NN, x1, y1, @fobj);
+% parfor i=1:runs
+%     % è¿è¡Œ HSADE_ImprovedQUATREï¼ˆéœ€ä¿è¯åŒç›®å½•æœ‰ HSADE_ImprovedQUATRE.mï¼‰
+%     [~, Best_val_1, ~, ~, ~] = HSADE_ImprovedQUATRE(FUN, dim, UB, LB, MaxFEs);
+%     [~, Best_val_2, ~, ~, ~] = DE_basic(FUN, dim, UB, LB, MaxFEs);
+%     [~, Best_val_3, ~, ~, ~] = SADE_AMSS(FUN, dim, UB, LB, MaxFEs);
+%     gbest_1(1,i)=Best_val_1;
+%     gbest_2(2,i)=Best_val_2;
+%     gbest_3(2,i)=Best_val_2;
+% end
+[Best_pos, Best_val, CE, NFEs, SN] = HSADE_ImprovedQUATRE(FUN, dim, UB, LB, MaxFEs);
+% fprintf('[HSADE] NFEs=%d  BestVal=%.6e  GS/LS-Success=%d/%d\n', NFEs, Best_val, SN(1), SN(2));
+% [Best_pos, Best_val, CE, NFEs, SN] = DE_basic(FUN, dim, UB, LB, MaxFEs);
+% [Best_pos, Best_val, CE, NFEs, SN] = SADE_AMSS(FUN, dim, UB, LB, MaxFEs);
+%
+%% 5) ç”¨æœ€ä¼˜å‚æ•°ç”Ÿæˆ Chen è¶…æ··æ²Œåºåˆ—
+[X, Y, Z, H, r, X0, Y0, Z0, H0] = output(Best_pos, M, N, t, I1, I2, I3, SUM);
+
+%% 6) DNA ç¼–ç åŠ å¯†ï¼ˆæœ€ç»ˆä¸€æ¬¡ï¼Œå®Œæ•´æµç¨‹ï¼‰
+[Q_R, Q_G, Q_B] = DNA_code(N, R, t, X, Y, Z, H, I1, I2, I3, r);
+
+%% 7) æŠ—è£å‰ªï¼ˆä¸åŸè„šæœ¬ä¿æŒä¸€è‡´çš„ç‰ˆæœ¬å‡½æ•°ï¼‰
+[Q_R, Q_G, Q_B, xx0, xx1, Q_jiami] = Copy_of_Anti_clipping(u, M, N, Q_R, Q_G, Q_B, I2, I3, SUM);
+% è‹¥è¦æµ‹è¯•å™ªå£°ï¼š
+% Q_jiami = imnoise(Q_jiami,'salt & pepper',0.5);
+
+%% 8) åŠ å¯†åä¿¡æ¯ç†µä¸ç›¸å…³æ€§
+[xxs2_R, xxs2_G, xxs2_B] = After_information_entropy(Q_R, Q_G, Q_B);
+[RXY2_R, RXY2_G, RXY2_B] = After_Correlation_analysis(Q_R, Q_G, Q_B, NN, x1, y1);
+fitness = fobj(RXY2_R, RXY2_G, RXY2_B);
+
+% å±•å¼€ä¸‰æ–¹å‘ç›¸å…³æ€§
+RXY2_SP_R=RXY2_R(1,1);  RXY2_CZ_R=RXY2_R(1,2);  RXY2_DJX_R=RXY2_R(1,3);
+RXY2_SP_G=RXY2_G(1,1);  RXY2_CZ_G=RXY2_G(1,2);  RXY2_DJX_G=RXY2_G(1,3);
+RXY2_SP_B=RXY2_B(1,1);  RXY2_CZ_B=RXY2_B(1,2);  RXY2_DJX_B=RXY2_B(1,3);
+
+%% 9) å¯è§†åŒ–å¯¹æ¯”
+figure('Position',[284 214 1200 400]);
+subplot(2,4,1);
+imshow(I);
+title('Plain Image');
+subplot(2,4,2);
+imhist(I1);
+title('Ch1 Channel Histogram of Plain Image');
+axis([0 255 0 2000]);
+subplot(2,4,3);
+imhist(I2);
+title('Ch2 Channel Histogram of Plain Image');
+axis([0 255 0 2000]);
+subplot(2,4,4);
+imhist(I3);
+title('Ch3 Channel Histogram of Plain Image');
+axis([0 255 0 2000]);
+subplot(2,4,5);
+imshow(Q_jiami);
+title('Cipher Image');
+subplot(2,4,6);
+imhist(Q_R);
+title('Ch1 Channel Histogram of Cipher Image');
+axis([0 255 0 2000]);
+subplot(2,4,7);
+imhist(Q_G);
+title('Ch2 Channel Histogram of Cipher Image');
+axis([0 255 0 2000]);
+subplot(2,4,8);
+imhist(Q_B);
+title('Ch3 Channel Histogram of Cipher Image');
+axis([0 255 0 2000]);
+%
+% ä¿å­˜åŠ å¯†å›¾
+imwrite(Q_jiami, ENCRYPTED_IMAGE);
+fprintf('åŠ å¯†å›¾åƒå·²ä¿å­˜è‡³: %s\n', ENCRYPTED_IMAGE);
+figure; imshow(Q_jiami); title('åŠ å¯†åå›¾ç‰‡');
+
+%% 10) ç»„ç»‡å¯†é’¥å¹¶å†™æ—¥å¿—
+% çœŸå®ç”¨äºè§£å¯†çš„å‚æ•°ï¼ˆä¿ç•™åŸå€¼ï¼‰
+u_1=u; x0_1=x0; X0_1=X0; Y0_1=Y0; Z0_1=Z0; H0_1=H0; M1_1=M1; N1_1=N1; xx0_1=xx0; xx1_1=xx1;
+
+% ä»…ç”¨äºæ–‡æœ¬å±•ç¤ºï¼šÃ—10000 åè½¬å­—ç¬¦ä¸²ï¼ˆé¿å…è¿‡çŸ­æ˜¾ç¤ºï¼‰
+u_v  = num2str(u   *10000);
+x0_v = num2str(x0  *10000);
+X0_v = num2str(X0  *10000);
+Y0_v = num2str(Y0  *10000);
+Z0_v = num2str(Z0  *10000);
+H0_v = num2str(H0  *10000);
+M1_v = num2str(M1  *10000);
+N1_v = num2str(N1  *10000);
+xx0_v= num2str(xx0 *10000);
+xx1_v= num2str(xx1 *10000);
+
+key = [u_v,' - ',x0_v,' - ',X0_v,' - ',Y0_v,' - ',Z0_v,' - ',H0_v,' - ',M1_v,' - ',N1_v,' - ',xx0_v,' - ',xx1_v];
+
+% å†™å…¥æ—¥å¿—æ–‡ä»¶ 
+diary(LOG_FILE); diary on;
+disp(['========== å›¾åƒ "', BASE_IMAGE_NAME, '" åŠ å¯†ç»“æœ ==========']);
+disp('åŠ å¯†æˆåŠŸ');
+disp('å¯†é’¥ï¼ˆæ˜¾ç¤ºä¸ºå‚æ•°Ã—10000åçš„å­—ç¬¦ä¸²ï¼‰ï¼š');
+disp(['å¯†é’¥1ï¼šÎ¼=',u_v,' å¯†é’¥2ï¼šx0=',x0_v,' å¯†é’¥3ï¼šx(0)=',X0_v,' å¯†é’¥4ï¼šy(0)=',Y0_v,' å¯†é’¥5ï¼šz(0)=',Z0_v]);
+disp(['å¯†é’¥6ï¼šh(0)=',H0_v,' å¯†é’¥7ï¼šM1=',M1_v,' å¯†é’¥8ï¼šN1=',N1_v,' å¯†é’¥9ï¼šxx0=',xx0_v,' å¯†é’¥10ï¼šxx1=',xx1_v]);
+disp('ä¿¡æ¯ç†µï¼š');
+disp(['åŸå§‹å›¾ç‰‡Ré€šé“ä¿¡æ¯ç†µ=',num2str(xxs1_R),' åŸå§‹å›¾ç‰‡Gé€šé“ä¿¡æ¯ç†µ=',num2str(xxs1_G),' åŸå§‹å›¾ç‰‡Bé€šé“ä¿¡æ¯ç†µ=',num2str(xxs1_B)]);
+disp(['åŠ å¯†å›¾ç‰‡Ré€šé“ä¿¡æ¯ç†µ=',num2str(xxs2_R),' åŠ å¯†å›¾ç‰‡Gé€šé“ä¿¡æ¯ç†µ=',num2str(xxs2_G),' åŠ å¯†å›¾ç‰‡Bé€šé“ä¿¡æ¯ç†µ=',num2str(xxs2_B)]);
+disp('Ré€šé“ç›¸å…³æ€§ï¼š');
+disp(['åŸå§‹ Rï¼šæ°´å¹³=',num2str(RXY1_SP_R),' å‚ç›´=',num2str(RXY1_CZ_R),' å¯¹è§’=',num2str(RXY1_DJX_R)]);
+disp(['åŠ å¯† Rï¼šæ°´å¹³=',num2str(RXY2_SP_R),' å‚ç›´=',num2str(RXY2_CZ_R),' å¯¹è§’=',num2str(RXY2_DJX_R)]);
+disp('Gé€šé“ç›¸å…³æ€§ï¼š');
+disp(['åŸå§‹ Gï¼šæ°´å¹³=',num2str(RXY1_SP_G),' å‚ç›´=',num2str(RXY1_CZ_G),' å¯¹è§’=',num2str(RXY1_DJX_G)]);
+disp(['åŠ å¯† Gï¼šæ°´å¹³=',num2str(RXY2_SP_G),' å‚ç›´=',num2str(RXY2_CZ_G),' å¯¹è§’=',num2str(RXY2_DJX_G)]);
+disp('Bé€šé“ç›¸å…³æ€§ï¼š');
+disp(['åŸå§‹ Bï¼šæ°´å¹³=',num2str(RXY1_SP_B),' å‚ç›´=',num2str(RXY1_CZ_B),' å¯¹è§’=',num2str(RXY1_DJX_B)]);
+disp(['åŠ å¯† Bï¼šæ°´å¹³=',num2str(RXY2_SP_B),' å‚ç›´=',num2str(RXY2_CZ_B),' å¯¹è§’=',num2str(RXY2_DJX_B)]);
+disp(['æœ€ç»ˆé€‚åº”åº¦ï¼ˆfobjï¼‰=', num2str(fitness,'%.6e')]);
+disp(['ä¼˜åŒ–ç®—æ³•è¯„ä¼°æ¬¡æ•° NFEs=', num2str(NFEs), 'ï¼ŒGS/LS æˆåŠŸæ¬¡æ•°=', num2str(SN(1)), '/', num2str(SN(2))]);
+disp('==============================================');
+diary off;
+fprintf('æ—¥å¿—å·²ä¿å­˜è‡³: %s\n', LOG_FILE);
+
+%% 11) è§£å¯†ä¸å±•ç¤º
+% æ£€æŸ¥åŠ å¯†å›¾åƒæ˜¯å¦å­˜åœ¨
+if ~exist(ENCRYPTED_IMAGE, 'file')
+    error('é”™è¯¯ï¼šæ‰¾ä¸åˆ°åŠ å¯†å›¾åƒæ–‡ä»¶ "%s"', ENCRYPTED_IMAGE);
+end
+
+I_en = imread(ENCRYPTED_IMAGE);           %è¯»å–å›¾åƒä¿¡æ¯
+Q_jiemi = main_jiemi(I_en,u_1, x0_1, X0_1, Y0_1, Z0_1, H0_1, M1_1, N1_1, xx0_1, xx1_1);
+imwrite(Q_jiemi, DECRYPTED_IMAGE);
+
+
+fprintf('è§£å¯†å›¾åƒå·²ä¿å­˜è‡³: %s\n', DECRYPTED_IMAGE);
+
+disp('ç”¨äºè§£å¯†çš„çœŸå®å¯†é’¥å‚æ•°å¦‚ä¸‹ï¼ˆæœªÃ—10000ï¼‰ï¼š');
+disp(['Î¼=',num2str(u_1),'  x0=',num2str(x0_1),'  x(0)=',num2str(X0_1),'  y(0)=',num2str(Y0_1),'  z(0)=',num2str(Z0_1),'  h(0)=',num2str(H0_1)]);
+disp(['M1=',num2str(M1_1),'  N1=',num2str(N1_1),'  xx0=',num2str(xx0_1),'  xx1=',num2str(xx1_1)]);
+disp('è§£å¯†å®Œæˆ');
+figure; imshow(Q_jiemi); title('è§£å¯†åå›¾ç‰‡');
+
+%{
+%% 12) å¯†é’¥ç©ºé—´åˆ†æ
+disp(' ');
+disp('=====================================');
+disp('å¼€å§‹è¿›è¡Œå¯†é’¥å®¹é‡åˆ†æ...');
+disp('=====================================');
+[total_key_space, key_space_bits] = analyze_key_space(u_1, x0_1, X0_1, Y0_1, Z0_1, H0_1, M1_1, N1_1, xx0_1, xx1_1);
+disp(['æ€»å¯†é’¥ç©ºé—´ â‰ˆ ', num2str(total_key_space)]);
+disp(['ç­‰æ•ˆæ¯”ç‰¹æ•° â‰ˆ ', num2str(key_space_bits)]);
+%}
+
+%% ï¼ˆå¯é€‰ï¼‰æ”¶æ•›æ›²çº¿
+if exist('CE','var') && numel(CE)>1
+    figure; plot(CE,'LineWidth',1.5); grid on;
+    xlabel('çœŸå®è¯„ä¼°æ¬¡æ•° NFE'); ylabel('å†å²æœ€å¥½å€¼');
+    title('ä¼˜åŒ–ç®—æ³•æ”¶æ•›æ›²çº¿');
+end
+%}
+%% =================== å±€éƒ¨å‡½æ•°ï¼šé€‚åº”åº¦è¯„ä¼° ===================
+%
+function fit = local_encrypt_fitness(x, M, N, t, I1, I2, I3, SUM, R, u, NN, x1, y1, fobj_handle)
+    % ç»™å®šå€™é€‰å‚æ•° xï¼š
+    % 1) ç”Ÿæˆ Chen è¶…æ··æ²Œåºåˆ—
+    [X, Y, Z, H, r, ~, ~, ~, ~] = output(x, M, N, t, I1, I2, I3, SUM);
+    % 2) DNA ç¼–ç å¾—åˆ°åŠ å¯†é€šé“ï¼ˆä¸ºäº†åŠ é€Ÿè¯„ä¼°ï¼Œæ­¤å¤„ä¸åšæŠ—è£å‰ªï¼‰
+    [Q_R, Q_G, Q_B] = DNA_code(N, R, t, X, Y, Z, H, I1, I2, I3, r);
+    % 3) ç›¸å…³æ€§åˆ†æå¹¶å‹ç¼©ä¸ºæ ‡é‡é€‚åº”åº¦
+    [RXY2_R, RXY2_G, RXY2_B] = After_Correlation_analysis(Q_R, Q_G, Q_B, NN, x1, y1);
+    fit = fobj_handle(RXY2_R, RXY2_G, RXY2_B);  % è¶Šå°è¶Šå¥½
+end
+%}
+%{
+function fit = local_encrypt_fitness(x, M, N, t, I1, I2, I3, SUM, R, u, NN, x1, y1, fobj_handle)
+    % ç»™å®šå€™é€‰å‚æ•° xï¼š
+    % 1) ç”Ÿæˆ Chen è¶…æ··æ²Œåºåˆ—
+    [X, Y, Z, H, r, ~, ~, ~, ~] = output(x, M, N, t, I1, I2, I3, SUM);
+    % 2) DNA ç¼–ç å¾—åˆ°åŠ å¯†é€šé“ï¼ˆä¸ºäº†åŠ é€Ÿè¯„ä¼°ï¼Œæ­¤å¤„ä¸åšæŠ—è£å‰ªï¼‰
+    [Q_R, Q_G, Q_B] = DNA_code(N, R, t, X, Y, Z, H, I1, I2, I3, r);
+    % 3) ç›¸å…³æ€§åˆ†æå¹¶å‹ç¼©ä¸ºæ ‡é‡é€‚åº”åº¦
+    [RXY2_R, RXY2_G, RXY2_B] = After_Correlation_analysis(Q_R, Q_G, Q_B, NN, x1, y1);
+    fit = fobj_handle(RXY2_R, RXY2_G, RXY2_B);  % è¶Šå°è¶Šå¥½
+end
+%}
+
+% ====================== FILE: Calculate_information_entropy.m ======================
+
+function [xxs1_R,xxs1_G,xxs1_B]=Calculate_information_entropy(I1,I2,I3)
+%% Ô­Ê¼Í¼Æ¬R,G,BÍ¨µÀĞÅÏ¢ìØ
+%RÍ¨µÀ
+T1_R=imhist(I1);   %Í³¼ÆÍ¼ÏñRÍ¨µÀ»Ò¶ÈÖµ´Ó0~255µÄ·Ö²¼Çé¿ö£¬´æÖÁT1
+S1_R=sum(T1_R);     %¼ÆËãÕû·ùÍ¼ÏñRÍ¨µÀµÄ»Ò¶ÈÖµ
+xxs1_R=0;           %Ô­Ê¼Í¼Æ¬RÍ¨µÀÏà¹ØĞÔ
+%GÍ¨µÀ
+T1_G=imhist(I2);
+S1_G=sum(T1_G);
+xxs1_G=0;
+%BÍ¨µÀ
+T1_B=imhist(I3);
+S1_B=sum(T1_B);
+xxs1_B=0;
+
+for i=1:256
+    pp1_R=T1_R(i)/S1_R;   %Ã¿¸ö»Ò¶ÈÖµÕ¼±È£¬¼´Ã¿¸ö»Ò¶ÈÖµµÄ¸ÅÂÊ
+    pp1_G=T1_G(i)/S1_G;
+    pp1_B=T1_B(i)/S1_B;
+    if pp1_R~=0
+        xxs1_R=xxs1_R-pp1_R*log2(pp1_R);
+    end
+    if pp1_G~=0
+        xxs1_G=xxs1_G-pp1_G*log2(pp1_G);
+    end
+    if pp1_B~=0
+        xxs1_B=xxs1_B-pp1_B*log2(pp1_B);
+    end
+end
+
+end
+
+% ====================== FILE: Orginal_Correlation_analysis.m ======================
+
+function [RXY1_SP_R,RXY1_CZ_R,RXY1_DJX_R,RXY1_SP_G,RXY1_CZ_G,RXY1_DJX_G,RXY1_SP_B,RXY1_CZ_B,RXY1_DJX_B,x1,y1]=Orginal_Correlation_analysis(NN,M,N,I1,I2,I3)
+%NN=5000;    %Ëæ»úÈ¡5000¶ÔÏñËØµã
+x1=ceil(rand(1,NN)*(M-1));      %Éú³É5000¸ö1~M-1µÄËæ»úÕûÊı×÷ÎªĞĞ
+y1=ceil(rand(1,NN)*(N-1));      %Éú³É5000¸ö1~N-1µÄËæ»úÕûÊı×÷ÎªÁĞ
+%Ô¤·ÖÅäÄÚ´æ
+XX_R_SP=zeros(1,NN);YY_R_SP=zeros(1,NN);        %Ë®Æ½
+XX_G_SP=zeros(1,NN);YY_G_SP=zeros(1,NN);
+XX_B_SP=zeros(1,NN);YY_B_SP=zeros(1,NN);
+XX_R_CZ=zeros(1,NN);YY_R_CZ=zeros(1,NN);        %´¹Ö±
+XX_G_CZ=zeros(1,NN);YY_G_CZ=zeros(1,NN);
+XX_B_CZ=zeros(1,NN);YY_B_CZ=zeros(1,NN);
+XX_R_DJX=zeros(1,NN);YY_R_DJX=zeros(1,NN);      %¶Ô½ÇÏß
+XX_G_DJX=zeros(1,NN);YY_G_DJX=zeros(1,NN);
+XX_B_DJX=zeros(1,NN);YY_B_DJX=zeros(1,NN);
+for i=1:NN
+    %Ë®Æ½
+    XX_R_SP(i)=I1(x1(i),y1(i));
+    YY_R_SP(i)=I1(x1(i)+1,y1(i));
+    XX_G_SP(i)=I2(x1(i),y1(i));
+    YY_G_SP(i)=I2(x1(i)+1,y1(i));
+    XX_B_SP(i)=I3(x1(i),y1(i));
+    YY_B_SP(i)=I3(x1(i)+1,y1(i));
+    %´¹Ö±
+    XX_R_CZ(i)=I1(x1(i),y1(i));
+    YY_R_CZ(i)=I1(x1(i),y1(i)+1);
+    XX_G_CZ(i)=I2(x1(i),y1(i));
+    YY_G_CZ(i)=I2(x1(i),y1(i)+1);
+    XX_B_CZ(i)=I3(x1(i),y1(i));
+    YY_B_CZ(i)=I3(x1(i),y1(i)+1);
+    %¶Ô½ÇÏß
+    XX_R_DJX(i)=I1(x1(i),y1(i));
+    YY_R_DJX(i)=I1(x1(i)+1,y1(i)+1);
+    XX_G_DJX(i)=I2(x1(i),y1(i));
+    YY_G_DJX(i)=I2(x1(i)+1,y1(i)+1);
+    XX_B_DJX(i)=I3(x1(i),y1(i));
+    YY_B_DJX(i)=I3(x1(i)+1,y1(i)+1);
+end
+%Ë®Æ½
+figure;scatter(XX_R_SP,YY_R_SP,18,'filled');xlabel('RÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚË®Æ½·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñRÍ¨µÀË®Æ½ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_G_SP,YY_G_SP,18,'filled');xlabel('GÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚË®Æ½·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñGÍ¨µÀË®Æ½ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_B_SP,YY_B_SP,18,'filled');xlabel('BÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚË®Æ½·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñBÍ¨µÀË®Æ½ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+%´¹Ö±
+figure;scatter(XX_R_CZ,YY_R_CZ,18,'filled');xlabel('RÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ´¹Ö±·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñRÍ¨µÀ´¹Ö±ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_G_CZ,YY_G_CZ,18,'filled');xlabel('GÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ´¹Ö±·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñGÍ¨µÀ´¹Ö±ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_B_CZ,YY_B_CZ,18,'filled');xlabel('BÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ´¹Ö±·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñBÍ¨µÀ´¹Ö±ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+%¶Ô½ÇÏß
+figure;scatter(XX_R_DJX,YY_R_DJX,18,'filled');xlabel('RÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ¶Ô½ÇÏß·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñRÍ¨µÀ¶Ô½ÇÏßÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_G_DJX,YY_G_DJX,18,'filled');xlabel('GÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ¶Ô½ÇÏß·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñGÍ¨µÀ¶Ô½ÇÏßÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_B_DJX,YY_B_DJX,18,'filled');xlabel('BÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ¶Ô½ÇÏß·½ÏòÏñËØ»Ò¶ÈÖµ');title('Ô­Ê¼Í¼ÏñBÍ¨µÀ¶Ô½ÇÏßÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+%RÍ¨µÀ
+EX1_R=0;EY1_SP_R=0;DX1_R=0;DY1_SP_R=0;COVXY1_SP_R=0;    %¼ÆËãË®Æ½Ïà¹ØĞÔÊ±ĞèÒªµÄ±äÁ¿
+EY1_CZ_R=0;DY1_CZ_R=0;COVXY1_CZ_R=0;                %´¹Ö±
+EY1_DJX_R=0;DY1_DJX_R=0;COVXY1_DJX_R=0;             %¶Ô½ÇÏß
+%GÍ¨µÀ
+EX1_G=0;EY1_SP_G=0;DX1_G=0;DY1_SP_G=0;COVXY1_SP_G=0;
+EY1_CZ_G=0;DY1_CZ_G=0;COVXY1_CZ_G=0;
+EY1_DJX_G=0;DY1_DJX_G=0;COVXY1_DJX_G=0;
+%BÍ¨µÀ
+EX1_B=0;EY1_SP_B=0;DX1_B=0;DY1_SP_B=0;COVXY1_SP_B=0;
+EY1_CZ_B=0;DY1_CZ_B=0;COVXY1_CZ_B=0;
+EY1_DJX_B=0;DY1_DJX_B=0;COVXY1_DJX_B=0;
+
+I1=double(I1);
+I2=double(I2);
+I3=double(I3);
+for i=1:NN
+    %µÚÒ»¸öÏñËØµãµÄE£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßÊ±¼ÆËãµÃ³öµÄµÚÒ»¸öÏñËØµãµÄEÏàÍ¬£¬Í³Ò»ÓÃEX1±íÊ¾
+    EX1_R=EX1_R+I1(x1(i),y1(i)); 
+    EX1_G=EX1_G+I2(x1(i),y1(i)); 
+    EX1_B=EX1_B+I3(x1(i),y1(i)); 
+    %µÚ¶ş¸öÏñËØµãµÄE£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßµÄE·Ö±ğ¶ÔÓ¦EY1_SP¡¢EY1_CZ¡¢EY1_DJX
+    %RÍ¨µÀ
+    EY1_SP_R=EY1_SP_R+I1(x1(i),y1(i)+1);
+    EY1_CZ_R=EY1_CZ_R+I1(x1(i)+1,y1(i));
+    EY1_DJX_R=EY1_DJX_R+I1(x1(i)+1,y1(i)+1);
+    %GÍ¨µÀ
+    EY1_SP_G=EY1_SP_G+I2(x1(i),y1(i)+1);
+    EY1_CZ_G=EY1_CZ_G+I2(x1(i)+1,y1(i));
+    EY1_DJX_G=EY1_DJX_G+I2(x1(i)+1,y1(i)+1);
+    %BÍ¨µÀ
+    EY1_SP_B=EY1_SP_B+I3(x1(i),y1(i)+1);
+    EY1_CZ_B=EY1_CZ_B+I3(x1(i)+1,y1(i));
+    EY1_DJX_B=EY1_DJX_B+I3(x1(i)+1,y1(i)+1);
+end
+%Í³Ò»ÔÚÑ­»·Íâ³ıÒÔÏñËØµã¶ÔÊı1000£¬¿É¼õÉÙÔËËã´ÎÊı
+% RÍ¨µÀ
+EX1_R=EX1_R/NN;
+EY1_SP_R=EY1_SP_R/NN;
+EY1_CZ_R=EY1_CZ_R/NN;
+EY1_DJX_R=EY1_DJX_R/NN;
+% GÍ¨µÀ
+EX1_G=EX1_G/NN;
+EY1_SP_G=EY1_SP_G/NN;
+EY1_CZ_G=EY1_CZ_G/NN;
+EY1_DJX_G=EY1_DJX_G/NN;
+% BÍ¨µÀ
+EX1_B=EX1_B/NN;
+EY1_SP_B=EY1_SP_B/NN;
+EY1_CZ_B=EY1_CZ_B/NN;
+EY1_DJX_B=EY1_DJX_B/NN;
+for i=1:NN
+    %µÚÒ»¸öÏñËØµãµÄD£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßÊ±¼ÆËãµÃ³öµÚÒ»¸öÏñËØµãµÄDÏàÍ¬£¬Í³Ò»ÓÃDX±íÊ¾
+    DX1_R=DX1_R+(I1(x1(i),y1(i))-EX1_R)^2;
+    DX1_G=DX1_G+(I2(x1(i),y1(i))-EX1_G)^2;
+    DX1_B=DX1_B+(I3(x1(i),y1(i))-EX1_B)^2;
+    %µÚ¶ş¸öÏñËØµãµÄD£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßµÄD·Ö±ğ¶ÔÓ¦DY1_SP¡¢DY1_CZ¡¢DY1_DJX
+    %RÍ¨µÀ
+    DY1_SP_R=DY1_SP_R+(I1(x1(i),y1(i)+1)-EY1_SP_R)^2;
+    DY1_CZ_R=DY1_CZ_R+(I1(x1(i)+1,y1(i))-EY1_CZ_R)^2;
+    DY1_DJX_R=DY1_DJX_R+(I1(x1(i)+1,y1(i)+1)-EY1_DJX_R)^2;
+    %GÍ¨µÀ
+    DY1_SP_G=DY1_SP_G+(I2(x1(i),y1(i)+1)-EY1_SP_G)^2;
+    DY1_CZ_G=DY1_CZ_G+(I2(x1(i)+1,y1(i))-EY1_CZ_G)^2;
+    DY1_DJX_G=DY1_DJX_G+(I2(x1(i)+1,y1(i)+1)-EY1_DJX_G)^2;
+    %BÍ¨µÀ
+    DY1_SP_B=DY1_SP_B+(I3(x1(i),y1(i)+1)-EY1_SP_B)^2;
+    DY1_CZ_B=DY1_CZ_B+(I3(x1(i)+1,y1(i))-EY1_CZ_B)^2;
+    DY1_DJX_B=DY1_DJX_B+(I3(x1(i)+1,y1(i)+1)-EY1_DJX_B)^2;
+    %Á½¸öÏàÁÚÏñËØµãÏà¹Øº¯ÊıµÄ¼ÆËã£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏß
+    %RÍ¨µÀ
+    COVXY1_SP_R=COVXY1_SP_R+(I1(x1(i),y1(i))-EX1_R)*(I1(x1(i),y1(i)+1)-EY1_SP_R);
+    COVXY1_CZ_R=COVXY1_CZ_R+(I1(x1(i),y1(i))-EX1_R)*(I1(x1(i)+1,y1(i))-EY1_CZ_R);
+    COVXY1_DJX_R=COVXY1_DJX_R+(I1(x1(i),y1(i))-EX1_R)*(I1(x1(i)+1,y1(i)+1)-EY1_DJX_R);
+    %GÍ¨µÀ
+    COVXY1_SP_G=COVXY1_SP_G+(I2(x1(i),y1(i))-EX1_G)*(I2(x1(i),y1(i)+1)-EY1_SP_G);
+    COVXY1_CZ_G=COVXY1_CZ_G+(I2(x1(i),y1(i))-EX1_G)*(I2(x1(i)+1,y1(i))-EY1_CZ_G);
+    COVXY1_DJX_G=COVXY1_DJX_G+(I2(x1(i),y1(i))-EX1_G)*(I2(x1(i)+1,y1(i)+1)-EY1_DJX_G);
+    %BÍ¨µÀ
+    COVXY1_SP_B=COVXY1_SP_B+(I3(x1(i),y1(i))-EX1_B)*(I3(x1(i),y1(i)+1)-EY1_SP_B);
+    COVXY1_CZ_B=COVXY1_CZ_B+(I3(x1(i),y1(i))-EX1_B)*(I3(x1(i)+1,y1(i))-EY1_CZ_B);
+    COVXY1_DJX_B=COVXY1_DJX_B+(I3(x1(i),y1(i))-EX1_B)*(I3(x1(i)+1,y1(i)+1)-EY1_DJX_B);
+end
+%Í³Ò»ÔÚÑ­»·Íâ³ıÒÔÏñËØµã¶ÔÊı1000£¬¿É¼õÉÙÔËËã´ÎÊı
+%RÍ¨µÀ
+DX1_R=DX1_R/NN;
+DY1_SP_R=DY1_SP_R/NN;
+DY1_CZ_R=DY1_CZ_R/NN;
+DY1_DJX_R=DY1_DJX_R/NN;
+COVXY1_SP_R=COVXY1_SP_R/NN;
+COVXY1_CZ_R=COVXY1_CZ_R/NN;
+COVXY1_DJX_R=COVXY1_DJX_R/NN;
+%GÍ¨µÀ
+DX1_G=DX1_G/NN;
+DY1_SP_G=DY1_SP_G/NN;
+DY1_CZ_G=DY1_CZ_G/NN;
+DY1_DJX_G=DY1_DJX_G/NN;
+COVXY1_SP_G=COVXY1_SP_G/NN;
+COVXY1_CZ_G=COVXY1_CZ_G/NN;
+COVXY1_DJX_G=COVXY1_DJX_G/NN;
+%BÍ¨µÀ
+DX1_B=DX1_B/NN;
+DY1_SP_B=DY1_SP_B/NN;
+DY1_CZ_B=DY1_CZ_B/NN;
+DY1_DJX_B=DY1_DJX_B/NN;
+COVXY1_SP_B=COVXY1_SP_B/NN;
+COVXY1_CZ_B=COVXY1_CZ_B/NN;
+COVXY1_DJX_B=COVXY1_DJX_B/NN;
+%Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßµÄÏà¹ØĞÔ
+%RÍ¨µÀ
+RXY1_SP_R=COVXY1_SP_R/sqrt(DX1_R*DY1_SP_R);
+RXY1_CZ_R=COVXY1_CZ_R/sqrt(DX1_R*DY1_CZ_R);
+RXY1_DJX_R=COVXY1_DJX_R/sqrt(DX1_R*DY1_DJX_R);
+%GÍ¨µÀ
+RXY1_SP_G=COVXY1_SP_G/sqrt(DX1_G*DY1_SP_G);
+RXY1_CZ_G=COVXY1_CZ_G/sqrt(DX1_G*DY1_CZ_G);
+RXY1_DJX_G=COVXY1_DJX_G/sqrt(DX1_G*DY1_DJX_G);
+%BÍ¨µÀ
+RXY1_SP_B=COVXY1_SP_B/sqrt(DX1_B*DY1_SP_B);
+RXY1_CZ_B=COVXY1_CZ_B/sqrt(DX1_B*DY1_CZ_B);
+RXY1_DJX_B=COVXY1_DJX_B/sqrt(DX1_B*DY1_DJX_B);
+
+end
+
+% ====================== FILE: zero_padding.m ======================
+
+function [I1,I2,I3,M1,N1]=zero_padding(M,N,I1,I2,I3,t)
+M1=mod(M,t);    %¿É×÷Îª¹Ì¶¨ÃÜÔ¿£¬ÒÔ±ã½âÂëÊ±¿ÉÒÔÈ¥³ı²¹ÉÏµÄ0
+N1=mod(N,t);    %¿É×÷Îª¹Ì¶¨ÃÜÔ¿£¬ÒÔ±ã½âÂëÊ±¿ÉÒÔÈ¥³ı²¹ÉÏµÄ0
+if M1~=0
+    I1(M+1:M+t-M1,:)=0;
+    I2(M+1:M+t-M1,:)=0;
+    I3(M+1:M+t-M1,:)=0;
+end
+if N1~=0
+    I1(:,N+1:N+t-N1)=0;
+    I2(:,N+1:N+t-N1)=0;
+    I3(:,N+1:N+t-N1)=0;
+end
+end
+
+% ====================== FILE: HSADE_ImprovedQUATRE.m ======================
+
+function [gbest, gbestval, CE, NFEs, SN] = HSADE_ImprovedQUATRE(FUN, D, UB, LB, MaxFEs)
+% HSADE with Improved QUATRE Sampling Strategy
+% ä»¥æœ€å¤§è¯„ä¼°æ¬¡æ•° MaxFEs ä¸ºç»ˆæ­¢æ¡ä»¶ï¼›FUN ä¸ºâ€œæ ‡é‡è¯„ä¼°â€ï¼ˆéå‘é‡åŒ–ï¼‰
+% è¾“å‡ºï¼š
+%   gbest     â€”â€” æœ€ä¼˜è§£
+%   gbestval  â€”â€” æœ€ä¼˜å€¼
+%   CE        â€”â€” æ¯ä¸€æ¬¡çœŸå®è¯„ä¼°åçš„å†å²æœ€å¥½å€¼ï¼ˆé•¿åº¦ = NFEsï¼‰
+%   NFEs      â€”â€” å®é™…å‡½æ•°è¯„ä¼°æ€»æ¬¡æ•°
+%   SN        â€”â€” [GSæˆåŠŸæ¬¡æ•°, LSæˆåŠŸæ¬¡æ•°]
+
+begin_time = tic;
+
+% ---------------- åˆå§‹åŒ– ----------------
+NFEs = 0;                    % çœŸå®è¯„ä¼°æ¬¡æ•°
+CE   = zeros(1, MaxFEs);     % å†å²æœ€å¥½å€¼è½¨è¿¹ï¼ˆæŒ‰è¯„ä¼°è®¡æ•°è®°å½•ï¼‰
+gbestval = inf;              % å…¨å±€æœ€ä¼˜å€¼
+gbest    = zeros(1, D);      % å…¨å±€æœ€ä¼˜è§£
+GS_sucNum = 0;               % Global Search æˆåŠŸæ¬¡æ•°
+LS_sucNum = 0;               % Local Search æˆåŠŸæ¬¡æ•°
+
+% åˆå§‹ LHS æ ·æœ¬æ•°
+if D < 100
+    initial_sample_size = 100;
+else
+    initial_sample_size = 150;
+end
+NP = 50;  % å…¨å±€å€™é€‰é›†è§„æ¨¡ä¸Šé™ï¼ˆä»æ•°æ®åº“æœ€ä¼˜çš„å‰ NP æ¡ä¸­æŠ½å–ï¼‰
+
+% ---------------- åˆå§‹ LHS é‡‡æ ·å¹¶çœŸå®è¯„ä¼°ï¼ˆæ¶ˆè€—é¢„ç®—ï¼‰ ----------------
+hx = repmat(LB, initial_sample_size, 1) + ...
+     (repmat(UB, initial_sample_size, 1) - repmat(LB, initial_sample_size, 1)) .* ...
+      lhsdesign(initial_sample_size, D);
+
+hf = inf(1, initial_sample_size);
+for i = 1:initial_sample_size
+    if NFEs >= MaxFEs, break; end
+    f = FUN(hx(i,:));             % æ ‡é‡è¯„ä¼°
+    hf(i) = f;
+    NFEs = NFEs + 1;
+
+    if f < gbestval
+        gbestval = f; gbest = hx(i,:);
+    end
+    CE(NFEs) = gbestval;
+end
+
+% å»æ‰æœªè¯„ä¼°ï¼ˆinfï¼‰çš„è¡Œ
+valid = isfinite(hf);
+hx = hx(valid, :);
+hf = hf(valid);
+
+% åˆå§‹æ’åº
+[hf, sidx] = sort(hf);
+hx = hx(sidx, :);
+
+% ---------------- æ¡†æ¶å‚æ•° ----------------
+F  = 0.5;         % åŸºç¡€ç¼©æ”¾å› å­
+CR = 0.5;         % äº¤å‰æ¦‚ç‡
+gs = min( max(50, round(0.5*size(hx,1))) , size(hx,1) );    % è®­ç»ƒæ ·æœ¬æ•°ï¼ˆå…¨å±€ä»£ç†ï¼‰
+ls = min(50, size(hx,1));                                   % å±€éƒ¨æ•°æ®æ¡æ•°
+
+disp('====== Starting HSADE with Improved QUATRE (MaxFEs termination) ======');
+
+% ================= ä¸»å¾ªç¯ï¼ˆæŒ‰é¢„ç®—é©±åŠ¨ï¼‰ =================
+while NFEs < MaxFEs
+    progress = NFEs / MaxFEs;
+
+    % ---------- 1) å…¨å±€æœç´¢ï¼ˆåŸºäºä»£ç†çš„å€™é€‰ â†’ çœŸå®è¯„ä¼° 1 æ¬¡ï¼‰ ----------
+    % é€‰å‡ºå½“å‰æœ€å¥½çš„å‰ NP ä¸ªä¸ªä½“ä½œä¸ºç§ç¾¤
+    curNP = min(NP, size(hx,1));
+    pop = hx(1:curNP, :);
+    pop_fit = hf(1:curNP);
+
+    VRmax = repmat(UB, curNP, 1);
+    VRmin = repmat(LB, curNP, 1);
+
+    % æ„å»ºå…¨å±€ä»£ç†ï¼ˆRBFï¼ŒMatlab çš„ newrbeï¼‰
+    gs_use = min(gs, size(hx,1));
+    ghx = hx(1:gs_use, :);
+    ghf = hf(1:gs_use);
+    ghxd = real(sqrt(ghx.^2*ones(size(ghx')) + ones(size(ghx))*(ghx').^2 - 2*ghx*(ghx')));
+    spr = max(max(ghxd))/(D*gs_use)^(1/D);
+    try
+        net = newrbe(ghx', ghf, spr);
+        modelFUN = @(x) sim(net, x')';  % è¿”å›è¡Œä¸º 1Ã—K
+    catch
+        % è‹¥ç¥ç»ç½‘ç»œå·¥å…·ç®±ä¸å¯ç”¨/å¤±è´¥ï¼Œåˆ™é€€åŒ–æˆç®€å•å¤šé¡¹å¼è¯„ä¼°å™¨ï¼ˆæç®€å…œåº•ï¼‰
+        modelFUN = @(x) sum((x - mean(ghx,1)).^2, 2);
+    end
+
+    % å€™é€‰äº§ç”Ÿï¼ˆåªç”¨ä»£ç†æ’åºï¼Œä¸æ¶ˆè€—çœŸå®é¢„ç®—ï¼‰
+    K  = 30;
+    Uc = QUATRE_Improved(pop, curNP, D, F, CR, VRmax, VRmin, ...
+                         'fitness', pop_fit', ...
+                         'progress', progress, ...
+                         'enable_adaptive', true);
+
+    % ä»£ç†è¯„åˆ†å¹¶åšâ€œå€™é€‰èšåˆâ€
+    pred = modelFUN(Uc);                 % 1Ã—curNP æˆ– curNPÃ—1
+    [~, ord] = sort(pred(:), 'ascend');
+    chooseK = min(K, size(Uc,1));
+    pool = Uc(ord(1:chooseK), :);
+
+    % éšæœºå–å‰è‹¥å¹²å†å–å‡å€¼ï¼ˆå¹³è¡¡æ¢ç´¢/å¼€å‘ï¼‰
+    rr = randi(chooseK); 
+    col = pool(1:rr, :);
+    cand = mean(col, 1);
+
+    % çœŸå®è¯„ä¼°ï¼ˆæ¶ˆè€—é¢„ç®— 1 æ¬¡ï¼‰
+    if NFEs >= MaxFEs, break; end
+    cand_fit = FUN(cand);
+    NFEs = NFEs + 1;
+
+    % æ›´æ–°æ•°æ®åº“
+    hx = [hx; cand];
+    hf = [hf, cand_fit];
+    [hf, sidx] = sort(hf);
+    hx = hx(sidx, :);
+
+    % æ›´æ–°å…¨å±€æœ€å¥½
+    if cand_fit <= gbestval
+        gbestval = cand_fit; gbest = cand;
+        GS_sucNum = GS_sucNum + 1;
+        disp(['Best Cost(GS) = ' num2str(gbestval, '%.6e') ' | NFE=' num2str(NFEs) ' | prog=' num2str(progress, '%.2f')]);
+    end
+
+    CE(NFEs) = gbestval;
+    if NFEs >= MaxFEs, break; end
+
+    % ---------- 2) å±€éƒ¨æœç´¢ï¼ˆå¸¦é¢„ç®—çš„æ”¹è¿› LPSRï¼‰ ----------
+    % å–å‰ ls æ¡ä½œä¸ºå±€éƒ¨æ•°æ®
+    ls_use = min(ls, size(hx,1));
+    lhx = hx(1:ls_use, :);
+    lhf = hf(1:ls_use);
+
+    local_LB = min(lhx, [], 1);
+    local_UB = max(lhx, [], 1);
+
+    % å±€éƒ¨ä»£ç†
+    lhxd = real(sqrt(lhx.^2*ones(size(lhx')) + ones(size(lhx))*(lhx').^2 - 2*lhx*(lhx')));
+    sprL = max(max(lhxd))/(D*ls_use)^(1/D);
+    try
+        netL = newrbe(lhx', lhf, sprL);
+        LocalModelFUN = @(x) sim(netL, x')';
+    catch
+        LocalModelFUN = @(x) sum((x - mean(lhx,1)).^2, 2);
+    end
+
+    % ä¼ å…¥â€œå‰©ä½™é¢„ç®—â€
+    remainBudget = MaxFEs - NFEs;
+    if remainBudget <= 0, break; end
+
+    maxLocalFEs = min(remainBudget, 50*D);   % ç»™å±€éƒ¨æœç´¢ä¸€ä¸ª cap
+    minerror = 1e-8;
+
+    [candLS, candLS_fit, usedFEs] = LocalSearch_LPSR_Improved( ...
+        D, maxLocalFEs, FUN, minerror, lhx, local_LB, local_UB, LocalModelFUN);
+
+    NFEs = NFEs + usedFEs;
+    if usedFEs > 0
+        % æŠŠ candLS æ’åº“ï¼ˆcandLS_fit å·²ç»æ˜¯çœŸå®è¯„ä¼°ï¼‰
+        hx = [hx; candLS];
+        hf = [hf, candLS_fit];
+        [hf, sidx] = sort(hf);
+        hx = hx(sidx, :);
+
+        if candLS_fit <= gbestval
+            gbestval = candLS_fit; gbest = candLS;
+            LS_sucNum = LS_sucNum + 1;
+            disp(['Best Cost(LS) = ' num2str(gbestval, '%.6e') ' | NFE=' num2str(NFEs)]);
+        end
+        CE(NFEs) = gbestval;
+    end
+end
+
+SN = [GS_sucNum, LS_sucNum];
+disp('====== Optimization Complete ======');
+disp(['Final best value: ', num2str(gbestval, '%.6e')]);
+disp(['Total NFEs used : ', num2str(NFEs)]);
+% æˆªæ–­ CE åˆ°å®é™… NFEs é•¿åº¦
+CE = CE(1:NFEs);
+end
+
+
+% ================= æ”¹è¿›çš„ QUATRE ç”Ÿæˆç®—å­ï¼ˆä¸åšçœŸå®è¯„ä¼°ï¼‰ =================
+function U = QUATRE_Improved(P, NP, Dim, F, CR, VRmax, VRmin, varargin)
+    p = inputParser;
+    addParameter(p, 'fitness', [], @isnumeric);
+    addParameter(p, 'progress', 0.5, @(x) x>=0 && x<=1);
+    addParameter(p, 'enable_adaptive', true, @islogical);
+    parse(p, varargin{:});
+
+    fitness = p.Results.fitness;
+    progress = p.Results.progress;
+    enable_adaptive = p.Results.enable_adaptive;
+
+    if isempty(fitness)
+        fitness = sum(P.^2, 2); % ç®€å•å…œåº•
+    end
+    [~, gbestid] = min(fitness);
+    gbest = P(gbestid, :);
+
+    % ç”Ÿæˆä¸‹ä¸‰è§’æ©ç  label
+    K = floor(NP/Dim);
+    label = zeros(NP, Dim);
+    for j = 0:K-1
+        label(j*Dim+1:j*Dim+Dim, :) = tril(ones(Dim, Dim), 0);
+    end
+    if K*Dim < NP
+        label(K*Dim+1:NP, :) = tril(ones(NP-K*Dim, Dim), 0);
+    end
+    for t = 1:NP
+        label(t, :) = label(t, randperm(Dim));
+    end
+    label = label(randperm(NP)', :);
+
+    % è‡ªé€‚åº” F
+    F_final = F;
+    if enable_adaptive
+        diversity = mean(std(P, 0, 1));
+        max_range = mean(VRmax(1,:) - VRmin(1,:));
+        diversity_ratio = max(1e-12, diversity / max_range);
+        F_adp = F * (0.5 + diversity_ratio);
+        F_adp = max(0.3, min(1.0, F_adp));
+        F_prog = F * (1.2 - 0.5*progress);
+        F_final = 0.7*F_adp + 0.3*F_prog;
+    end
+
+    U = zeros(NP, Dim);
+    for i = 1:NP
+        % ç­–ç•¥é€‰æ‹©
+        if enable_adaptive
+            r = rand();
+            if progress < 0.3
+                strat = (r < 0.6) + 1;       % 1: rand/1, 2: current-to-best/1
+            elseif progress < 0.7
+                if r < 0.3, strat = 1; elseif r < 0.7, strat = 2; else, strat = 3; end
+            else
+                strat = 2 + (r >= 0.2);      % 2: current-to-best/1, 3: best/1
+            end
+        else
+            strat = 3;
+        end
+
+        % é€‰ r1,r2,r3
+        idx = randperm(NP); idx(idx==i) = [];
+        k0 = idx(1); k1 = idx(2); k2 = idx(3);
+        P1 = P(k0,:); P2 = P(k1,:); P3 = P(k2,:);
+
+        switch strat
+            case 1 % rand/1
+                V = P1 + F_final*(P2 - P3);
+            case 2 % current-to-best/1
+                V = P(i,:) + F_final*(gbest - P(i,:)) + F_final*(P2 - P3);
+            otherwise % best/1
+                V = gbest + F_final*(P2 - P3);
+        end
+
+        % QUATRE æ©ç æ‹·è´
+        Ui = P(i,:);
+        Ui(logical(label(i,:))) = V(logical(label(i,:)));
+
+        % è¾¹ç•Œå¤„ç†
+        Ui = handleBoundary(Ui, P(i,:), VRmin(i,:), VRmax(i,:));
+
+        U(i,:) = Ui;
+    end
+end
+
+% â€”â€” è¾¹ç•Œå¤„ç†ï¼šé•œåƒ + ä¸­ç‚¹ç­–ç•¥ + è£å‰ª â€”â€” 
+function x_new = handleBoundary(x, x_old, LB, UB)
+    x_new = x;
+    for j = 1:length(x)
+        if x(j) < LB(j) || x(j) > UB(j)
+            if rand() < 0.8
+                if x(j) < LB(j)
+                    x_new(j) = LB(j) + (LB(j) - x(j));
+                    if x_new(j) > UB(j), x_new(j) = (LB(j)+UB(j))/2; end
+                else
+                    x_new(j) = UB(j) - (x(j) - UB(j));
+                    if x_new(j) < LB(j), x_new(j) = (LB(j)+UB(j))/2; end
+                end
+            else
+                if x(j) < LB(j), x_new(j) = (LB(j)+x_old(j))/2;
+                else,            x_new(j) = (UB(j)+x_old(j))/2; end
+            end
+            x_new(j) = max(LB(j), min(UB(j), x_new(j)));
+        end
+    end
+end
+
+% ================== å±€éƒ¨æœç´¢ï¼ˆå¸¦é¢„ç®—ã€é€ç‚¹è¯„ä¼°ç‰ˆï¼‰ ==================
+function [bestX, bestFit, usedFEs] = LocalSearch_LPSR_Improved( ...
+    Dim, maxFes, FUN, minerror, lhx, LB, UB, LocalModelFUN)
+
+    NP0 = 50; max_NP = NP0; min_NP = 4;
+    F = 0.5; CR = 0.8;
+
+    % åˆå§‹åŒ–
+    NP = NP0;
+    X  = (UB - LB).*rand(NP,Dim) + LB;
+
+    % çœŸå®è¯„ä¼°ï¼ˆå°½é‡è¯„å®Œåˆå§‹ç§ç¾¤ï¼‰
+    fitnessX = inf(NP,1);
+    evalX    = false(NP,1);      % æ˜¯å¦çœŸå®è¯„ä¼°æ ‡è®°
+    usedFEs  = 0;
+    for i = 1:NP
+        if usedFEs >= maxFes, break; end
+        fitnessX(i) = FUN(X(i,:));
+        evalX(i)    = true;
+        usedFEs     = usedFEs + 1;
+    end
+    % æœªè¯„ä¼°çš„ä»…ç”¨äºâ€œå ä½â€ï¼Œä¸ç»™æœ€ä¼˜æ¯”è¾ƒ
+    if any(~evalX)
+        fitnessX(~evalX) = LocalModelFUN(X(~evalX,:));
+    end
+
+    % åªåœ¨çœŸå®è¯„ä¼°è¿‡çš„é‡Œæ‰¾æœ€ä¼˜ï¼›è‹¥ä¸€ä¸ªéƒ½æ²¡è¯„ä¼°ï¼Œåˆ™é€€å‡º
+    if any(evalX)
+        [bestFit, idxbest] = min(fitnessX(evalX));
+        idxList = find(evalX);
+        bestX   = X(idxList(idxbest),:);
+    else
+        bestFit = inf;
+        bestX   = X(1,:);
+        return;
+    end
+
+    emaImp = 0; beta = 0.8; tau_imp = 1e-5;
+
+    while usedFEs < maxFes
+        fitnessBest_old = bestFit;
+
+        % å˜å¼‚ + äº¤å‰
+        V = zeros(NP,Dim); U = zeros(NP,Dim);
+        [~, sorted_index] = sort(fitnessX);     % æ— ç¢ï¼šåªæ˜¯ç”¨äºé€‰ pbest
+        pNP = max(round(0.2*NP),2);
+
+        for i = 1:NP
+            pbest_idx = sorted_index(randi(pNP));
+            pbest = X(pbest_idx,:);
+
+            r1 = randi(NP); while r1==i, r1 = randi(NP); end
+            r2 = randi(NP); while r2==i || r2==r1, r2 = randi(NP); end
+
+            V(i,:) = X(i,:) + F*(pbest - X(i,:)) + F*(X(r1,:) - X(r2,:));
+            V(i,:) = max(LB, min(UB, V(i,:)));
+        end
+
+        for i = 1:NP
+            jrand = randi(Dim);
+            for j = 1:Dim
+                if rand <= CR || j == jrand
+                    U(i,j) = V(i,j);
+                else
+                    U(i,j) = X(i,j);
+                end
+            end
+        end
+
+        % â€”â€” é€ç‚¹çœŸå®è¯„ä¼°ï¼šåªè¦é¢„ç®—å…è®¸å°±è¯„ï¼Œå¦åˆ™æ ‡ä¸ºâ€œæœªè¯„ä¼°â€ â€”â€” 
+        fitnessU = inf(NP,1);
+        evalU    = false(NP,1);
+        for i = 1:NP
+            if usedFEs >= maxFes, break; end
+            fitnessU(i) = FUN(U(i,:));
+            evalU(i)    = true;
+            usedFEs     = usedFEs + 1;
+        end
+        % æœªè¯„ä¼°é¡¹ç”¨ä»£ç†ä½œå ä½ï¼ˆä»…ç”¨äºæ’åº/å¯†åº¦åˆ¤æ–­ï¼‰ï¼Œ**ä¸å‚ä¸**æ›¿æ¢ä¸æœ€ä¼˜æ¯”è¾ƒ
+        if any(~evalU)
+            fitnessU(~evalU) = LocalModelFUN(U(~evalU,:));
+        end
+
+        % â€”â€” 1 å¯¹ 1 é€‰æ‹©ï¼šåªæœ‰ evalU(i)=true æ—¶æ‰å…è®¸æ›¿æ¢ â€”â€” 
+        for i = 1:NP
+            if evalU(i) && (fitnessU(i) <= fitnessX(i))
+                X(i,:)       = U(i,:);
+                fitnessX(i)  = fitnessU(i);
+                evalX(i)     = true;      % è¯¥ä¸ªä½“æœ‰çœŸå®è¯„ä¼°
+                if fitnessU(i) < bestFit
+                    bestFit = fitnessU(i);
+                    bestX   = X(i,:);
+                end
+            end
+        end
+
+        % EMA æ”¹å–„ç‡
+        rel_imp = max(0, (fitnessBest_old - bestFit) / (abs(fitnessBest_old) + 1e-12));
+        emaImp  = beta*emaImp + (1-beta)*rel_imp;
+
+        NP_linear = round(((min_NP - max_NP)/maxFes)*usedFEs + max_NP);
+        next_NP = NP;
+        if emaImp < tau_imp
+            next_NP = min(NP, NP_linear);
+        end
+
+        % æ”¶ç¼©ï¼ˆå¯†åº¦ + æœ€å·®ï¼‰ï¼Œå…è®¸ä½¿ç”¨â€œå ä½ fitnessâ€åšå¯†åº¦/æ’åºï¼Œä½†ä¸æ”¹æœ€ä¼˜
+        if next_NP < NP
+            re_num = NP - next_NP;
+            if next_NP < min_NP, re_num = NP - min_NP; end
+
+            XX = sum(X.^2,2);
+            dmat = sqrt(max(0, XX + XX' - 2*(X*X')));
+            dmat(1:NP+1:end) = inf;
+            nnDist = min(dmat, [], 2);
+            [~, densIdx]  = sort(nnDist,'ascend');
+            [~, worstIdx] = sort(fitnessX,'descend');
+
+            take_dens  = floor(re_num/2);
+            take_worst = re_num - take_dens;
+            delIdx = unique([densIdx(1:take_dens); worstIdx(1:take_worst)]);
+
+            k = 1;
+            while numel(delIdx) < re_num && k <= NP
+                c = worstIdx(k);
+                if ~ismember(c, delIdx), delIdx(end+1,1) = c; end
+                k = k + 1;
+            end
+
+            X(delIdx,:)      = [];
+            fitnessX(delIdx) = [];
+            evalX(delIdx)    = [];
+            NP = size(X,1);
+        end
+
+        if abs(fitnessBest_old - bestFit) <= minerror
+            break;
+        end
+    end
+end
+
+
+
+% ====================== FILE: output.m ======================
+
+function [X,Y,Z,H,r,X0,Y0,Z0,H0]=output(XP,M,N,t,I1,I2,I3,SUM)
+%% 4.Çó½âChenÊÏ³¬»ìãçÏµÍ³
+%ÇóËÄ¸ö³õÖµX0,Y0,Z0,H0
+r=(M/t)*(N/t);      %rÎª·Ö¿é¸öÊı
+%Çó³öËÄ¸ö³õÖµ
+I_sum = sum(I1(:)) + sum(I2(:)) + sum(I3(:));
+I_normalized = I_sum / (255 * SUM * 3);  % ¹éÒ»»¯µ½[0,1]
+
+% Step 2: ChenÏµÍ³±ê×¼³õÖµ + »ùÓÚÓÅ»¯Î»ÖÃµÄÈÅ¶¯ + Í¼ÏñÌØÕ÷µÄÎ¢µ÷
+X0 = 35 + XP(1) * 5 + I_normalized;     % ±ê×¼Öµ35£¬ÈÅ¶¯·¶Î§[-5,5]
+Y0 = -7 + XP(2) * 3 + I_normalized;     % ±ê×¼Öµ-7£¬ÈÅ¶¯·¶Î§[-3,3]
+Z0 = 26 + XP(3) * 5 + I_normalized;     % ±ê×¼Öµ26£¬ÈÅ¶¯·¶Î§[-5,5]
+H0 = -4 + XP(4) * 2 + I_normalized;     % ±ê×¼Öµ-4£¬ÈÅ¶¯·¶Î§[-2,2]
+
+% Step 3: Ê¹ÓÃÎ»ÔËËãÌáÈ¡Í¼ÏñµÄÌØ¶¨Î»Æ½ÃæĞÅÏ¢
+% Î»ÑÚÂëÉè¼Æ£º
+% 85  = 01010101 (ÌáÈ¡ÆæÊıÎ»)
+% 170 = 10101010 (ÌáÈ¡Å¼ÊıÎ»)
+% 51  = 00110011 (ÌáÈ¡µÍÎ»¶Ô)
+% 204 = 11001100 (ÌáÈ¡¸ßÎ»¶Ô)
+bit_feature1 = sum(sum(bitand(I1, 85))) / (85 * SUM);   % RÍ¨µÀÆæÊıÎ»ÌØÕ÷
+bit_feature2 = sum(sum(bitand(I2, 170))) / (170 * SUM); % GÍ¨µÀÅ¼ÊıÎ»ÌØÕ÷
+bit_feature3 = sum(sum(bitand(I3, 51))) / (51 * SUM);   % BÍ¨µÀµÍÎ»¶ÔÌØÕ÷
+bit_feature4 = sum(sum(bitand(I1, 204))) / (204 * SUM); % RÍ¨µÀ¸ßÎ»¶ÔÌØÕ÷
+
+% Step 4: ½áºÏËùÓĞÌØÕ÷½øĞĞÎ¢µ÷
+X0 = X0 + bit_feature1 * 0.1;  % Î»ÌØÕ÷Ìá¹©0~0.1µÄÎ¢µ÷
+Y0 = Y0 + bit_feature2 * 0.1;
+Z0 = Z0 + bit_feature3 * 0.1;
+H0 = H0 + bit_feature4 * 0.1;
+
+% Step 5: ¶îÍâµÄ°²È«ĞÔÔöÇ¿£¨¿ÉÑ¡£©
+% Ê¹ÓÃ²»Í¬Í¨µÀµÄ½»²æÎ»ÔËËã
+cross_feature1 = sum(sum(bitand(I1, bitxor(170, uint8(I2))))) / (255 * SUM);
+cross_feature2 = sum(sum(bitand(I2, bitxor(51, uint8(I3))))) / (255 * SUM);
+X0 = X0 + cross_feature1 * 0.05;  % ½»²æÌØÕ÷Ìá¹©¸üĞ¡µÄÈÅ¶¯
+Y0 = Y0 + cross_feature2 * 0.05;
+
+% ±£ÁôËÄÎ»Ğ¡Êı£¨È·±£¾«¶È£©
+X0 = round(X0 * 10^4) / 10^4;
+Y0 = round(Y0 * 10^4) / 10^4;
+Z0 = round(Z0 * 10^4) / 10^4;
+H0 = round(H0 * 10^4) / 10^4;
+
+%¸ù¾İ³õÖµ£¬Çó½âChenÊÏ³¬»ìãçÏµÍ³£¬µÃµ½ËÄ¸ö»ìãçĞòÁĞ
+A=chen_output(X0,Y0,Z0,H0,r);
+X=A(:,1);
+X=X(3002:length(X));        %È¥³ıÇ°3001Ïî£¬»ñµÃ¸üºÃµÄËæ»úĞÔ£¨Çó½â³ÂÊÏÏµÍ³µÄ×Óº¯Êı¶à¼ÆËãÁË3000µã£©
+Y=A(:,2);
+Y=Y(3002:length(Y));
+Z=A(:,3);
+Z=Z(3002:length(Z));
+H=A(:,4);
+H=H(3002:length(H));
+
+end
+
+% ====================== FILE: chen_output.m ======================
+
+%% ×Óº¯Êı Çó½âChenÊÏ³¬»ìãçÏµÍ³
+%²ÉÓÃode45Çó½â
+%²Î¿¼£ºhttps://zhidao.baidu.com/question/1959859560446863460.html
+function fy=chen_output(x0,y0,z0,h0,num)
+% Î¢·Ö·½³ÌÇó½â
+opt = odeset('Mass',@mass);
+y0=[x0;y0;z0;h0];
+[~,y] = ode45(@ode,0:500/(num+3000):500,y0,opt);
+fy=y;
+    function f = ode(~,y)
+        y1=y(1);
+        y2=y(2);
+        y3=y(3);
+        y4=y(4);
+        f = [35*(y2-y1)+y4;7*y1-y1*y3+12*y2;y1*y2-3*y3;y2*y3+0.2*y4];
+    end
+    function M = mass(~,~)
+        M = [1,0,0,0;0,1,0,0;0,0,1,0;0,0,0,1];
+    end
+end
+
+% ====================== FILE: DNA_code.m ======================
+
+function [Q_R,Q_G,Q_B]=DNA_code(N,R,t,X,Y,Z,H,I1,I2,I3,r)
+%X,Y·Ö±ğ¾ö¶¨IºÍRµÄDNA±àÂë·½Ê½£¬ÓĞ8ÖÖ£¬1~8
+%Z¾ö¶¨ÔËËã·½Ê½£¬ÓĞ4ÖÖ£¬0~3£¬0±íÊ¾¼Ó£¬1±íÊ¾¼õ£¬2±íÊ¾Òì»ò£¬3±íÊ¾Í¬»ò
+%H±íÊ¾DNA½âÂë·½Ê½£¬ÓĞ8ÖÖ£¬1~8
+X=mod(round(X*10^4),8)+1;
+Y=mod(round(Y*10^4),8)+1;
+Z=mod(round(Z*10^4),4);
+H=mod(round(H*10^4),8)+1;
+e=N/t;  %e±íÊ¾Ã¿Ò»ĞĞ¿ÉÒÔ·ÖÎª¶àÉÙ¿é
+
+Q2=DNA_bian(fenkuai(t,R,1),Y(1));
+%RÍ¨µÀ
+Q1_R=DNA_bian(fenkuai(t,I1,1),X(1));
+Q_last_R=DNA_yunsuan(Q1_R,Q2,Z(1));
+Q_R(1:t,1:t)=DNA_jie(Q_last_R,H(1));
+%GÍ¨µÀ
+Q1_G=DNA_bian(fenkuai(t,I2,1),X(1));
+Q_last_G=DNA_yunsuan(Q1_G,Q2,Z(1));
+Q_G(1:t,1:t)=DNA_jie(Q_last_G,H(1));
+%BÍ¨µÀ
+Q1_B=DNA_bian(fenkuai(t,I3,1),X(1));
+Q_last_B=DNA_yunsuan(Q1_B,Q2,Z(1));
+Q_B(1:t,1:t)=DNA_jie(Q_last_B,H(1));
+
+for i=2:r
+    Q1_R=DNA_bian(fenkuai(t,I1,i),X(i));   %¶ÔÔ­Ê¼Í¼ÏñRÍ¨µÀÃ¿Ò»¸ö·Ö¿é°´X¶ÔÓ¦µÄĞòºÅ½øĞĞDNA±àÂë
+    Q1_G=DNA_bian(fenkuai(t,I2,i),X(i));
+    Q1_B=DNA_bian(fenkuai(t,I3,i),X(i));
+    
+    Q2=DNA_bian(fenkuai(t,R,i),Y(i));   %¶ÔRµÄÃ¿Ò»¸ö·Ö¿é°´Y¶ÔÓ¦µÄĞòºÅ½øĞĞDNA±àÂë
+    %RÍ¨µÀ
+    Q3_R=DNA_yunsuan(Q1_R,Q2,Z(i));         %¶ÔÉÏÃæÁ½¸ö±àÂëºÃµÄ¿é°´Z¶ÔÓ¦µÄĞòºÅ½øĞĞDNAÔËËã
+    Q4_R=DNA_yunsuan(Q3_R,Q_last_R,Z(i));     %ÔËËã½á¹ûÔÚºÍÇ°Ò»¿é°´Z¶ÔÓ¦µÄĞòºÅÔÙÒ»´Î½øĞĞÔËËã£¬³ÆÎªÀ©É¢
+    Q_last_R=Q4_R;
+    %GÍ¨µÀ
+    Q3_G=DNA_yunsuan(Q1_G,Q2,Z(i));
+    Q4_G=DNA_yunsuan(Q3_G,Q_last_G,Z(i));
+    Q_last_G=Q4_G;
+    %BÍ¨µÀ
+    Q3_B=DNA_yunsuan(Q1_B,Q2,Z(i));
+    Q4_B=DNA_yunsuan(Q3_B,Q_last_B,Z(i));
+    Q_last_B=Q4_B;
+    
+    xx=floor(i/e)+1;
+    yy=mod(i,e);
+    if yy==0
+        xx=xx-1;
+        yy=e;
+    end
+    Q_R((xx-1)*t+1:xx*t,(yy-1)*t+1:yy*t)=DNA_jie(Q4_R,H(i));    %½«Ã¿Ò»¿éºÏ²¢³ÉÍêÕûµÄÍ¼Q
+    Q_G((xx-1)*t+1:xx*t,(yy-1)*t+1:yy*t)=DNA_jie(Q4_G,H(i));
+    Q_B((xx-1)*t+1:xx*t,(yy-1)*t+1:yy*t)=DNA_jie(Q4_B,H(i));
+end
+Q_R=uint8(Q_R);
+Q_G=uint8(Q_G);
+Q_B=uint8(Q_B);
+end
+
+% ====================== FILE: fenkuai.m ======================
+
+%% ×Óº¯Êı ·Ö¿éº¯Êı£¬tÎªÃ¿¿éµÄ±ß³¤£¬IÎªÒª·Ö¿éµÄÍ¼Ïñ£¬numÎª·µ»ØµÚ¼¸´ó¿é
+function fv=fenkuai(t,I,num)
+[~,N]=size(I);
+N=N/t;
+x=floor(num/N)+1;      %µÚ¼¸´óĞĞ
+y=mod(num,N);           %µÚ¼¸´óÁĞ
+if y==0
+    x=x-1;
+    y=N;
+end
+fv=I(t*(x-1)+1:t*x,t*(y-1)+1:t*y);
+
+
+
+
+% ====================== FILE: DNA_bian.m ======================
+
+%% ×Óº¯Êı DNA±àÂë
+function fv=DNA_bian(array,num)
+t=length(array);
+a1=bitand(array,192)/64;
+a2=bitand(array,48)/16;
+a3=bitand(array,12)/4;
+a4=bitand(array,3);
+A=[a1,a2,a3,a4];        % tĞĞ4tÁĞ
+fv=zeros(t,4*t);        % Ô¤·ÖÅäÄÚ´æ
+if num==1 || num==2
+    for i=1:t
+        for j=1:4*t
+            if A(i,j)==0
+                fv(i,j)='A';
+            elseif A(i,j)==3
+                fv(i,j)='T';
+            elseif A(i,j)==2
+                if num==1
+                    fv(i,j)='C';
+                else
+                    fv(i,j)='G';
+                end
+            else
+                if num==1
+                    fv(i,j)='G';
+                else
+                    fv(i,j)='C';
+                end
+            end
+        end
+    end
+elseif num==3 || num==4
+    for i=1:t
+        for j=1:4*t
+            if A(i,j)==1
+                fv(i,j)='A';
+            elseif A(i,j)==2
+                fv(i,j)='T';
+            elseif A(i,j)==0
+                if num==3
+                    fv(i,j)='G';
+                else
+                    fv(i,j)='C';
+                end
+            else
+                if num==3
+                    fv(i,j)='C';
+                else
+                    fv(i,j)='G';
+                end
+            end
+        end
+    end
+elseif num==5 || num==6
+    for i=1:t
+        for j=1:4*t
+            if A(i,j)==2
+                fv(i,j)='A';
+            elseif A(i,j)==1
+                fv(i,j)='T';
+            elseif A(i,j)==0
+                if num==5
+                    fv(i,j)='G';
+                else
+                    fv(i,j)='C';
+                end
+            else
+                if num==5
+                    fv(i,j)='C';
+                else
+                    fv(i,j)='G';
+                end
+            end
+        end
+    end
+else                    %  num==7 || num==8
+    for i=1:t
+        for j=1:4*t
+            if A(i,j)==3
+                fv(i,j)='A';
+            elseif A(i,j)==0
+                fv(i,j)='T';
+            elseif A(i,j)==1
+                if num==7
+                    fv(i,j)='G';
+                else
+                    fv(i,j)='C';
+                end
+            else
+                if num==7
+                    fv(i,j)='C';
+                else
+                    fv(i,j)='G';
+                end
+            end
+        end
+    end
+end
+
+% ====================== FILE: DNA_yunsuan.m ======================
+
+%% ×Óº¯Êı DNAÔËËã arr1ºÍarr2±íÊ¾Á½¸öÒªÔËËãµÄDNA¾ØÕó¡£
+%numÎª0Ê±£¬±íÊ¾¼Ó£»numÎª1Ê±£¬±íÊ¾¼õ£»numÎª2Ê±£¬±íÊ¾Òì»ò£»numÎª3Ê±±íÊ¾Í¬»ò
+function fv=DNA_yunsuan(arr1,arr2,num)
+[m,n]=size(arr1);
+fv=zeros(m,n);          %Ô¤·ÖÅäÄÚ´æ
+if num==0    %¼Ó·¨
+    for i=1:m
+        for j=1:n
+            if arr1(i,j)=='A'
+                fv(i,j)=arr2(i,j);
+            elseif arr1(i,j)=='T'
+                if arr2(i,j)=='A'
+                    fv(i,j)='T';
+                elseif arr2(i,j)=='T'
+                    fv(i,j)='C';
+                elseif arr2(i,j)=='C'
+                    fv(i,j)='G';
+                else
+                    fv(i,j)='A';
+                end
+            elseif arr1(i,j)=='C'
+                if arr2(i,j)=='A'
+                    fv(i,j)='C';
+                elseif arr2(i,j)=='T'
+                    fv(i,j)='G';
+                elseif arr2(i,j)=='C'
+                    fv(i,j)='A';
+                else
+                    fv(i,j)='T';
+                end
+            else
+                if arr2(i,j)=='A'
+                    fv(i,j)='G';
+                elseif arr2(i,j)=='T'
+                    fv(i,j)='A';
+                elseif arr2(i,j)=='C'
+                    fv(i,j)='T';
+                else
+                    fv(i,j)='C';
+                end
+            end
+        end
+    end
+elseif num==1       %¼õ·¨
+    for i=1:m
+        for j=1:n
+            if arr2(i,j)=='A'
+                fv(i,j)=arr1(i,j);
+            elseif arr2(i,j)=='T'
+                if arr1(i,j)=='A'
+                    fv(i,j)='G';
+                elseif arr1(i,j)=='T'
+                    fv(i,j)='A';
+                elseif arr1(i,j)=='C'
+                    fv(i,j)='T';
+                else
+                    fv(i,j)='C';
+                end
+            elseif arr2(i,j)=='C'
+                if arr1(i,j)=='A'
+                    fv(i,j)='C';
+                elseif arr1(i,j)=='T'
+                    fv(i,j)='G';
+                elseif arr1(i,j)=='C'
+                    fv(i,j)='A';
+                else
+                    fv(i,j)='T';
+                end
+            else
+                if arr1(i,j)=='A'
+                    fv(i,j)='T';
+                elseif arr1(i,j)=='T'
+                    fv(i,j)='C';
+                elseif arr1(i,j)=='C'
+                    fv(i,j)='G';
+                else
+                    fv(i,j)='A';
+                end
+            end
+        end
+    end
+elseif num==2        %Òì»ò
+    for i=1:m
+        for j=1:n
+            if arr1(i,j)==arr2(i,j)
+                fv(i,j)='C';
+            elseif (arr1(i,j)=='T' && arr2(i,j)=='A') || (arr1(i,j)=='A' && arr2(i,j)=='T') || (arr1(i,j)=='G' && arr2(i,j)=='C') || (arr1(i,j)=='C' && arr2(i,j)=='G')
+                fv(i,j)='G';
+            elseif (arr1(i,j)=='C' && arr2(i,j)=='A') || (arr1(i,j)=='A' && arr2(i,j)=='C') || (arr1(i,j)=='G' && arr2(i,j)=='T') || (arr1(i,j)=='T' && arr2(i,j)=='G')
+                fv(i,j)='A';
+            else
+                fv(i,j)='T';
+            end
+        end
+    end
+else                %Í¬»ò
+    for i=1:m
+        for j=1:n
+            if arr1(i,j)==arr2(i,j)
+                fv(i,j)='A';
+            elseif (arr1(i,j)=='T' && arr2(i,j)=='A') || (arr1(i,j)=='A' && arr2(i,j)=='T') || (arr1(i,j)=='G' && arr2(i,j)=='C') || (arr1(i,j)=='C' && arr2(i,j)=='G')
+                fv(i,j)='T';
+            elseif (arr1(i,j)=='C' && arr2(i,j)=='A') || (arr1(i,j)=='A' && arr2(i,j)=='C') || (arr1(i,j)=='G' && arr2(i,j)=='T') || (arr1(i,j)=='T' && arr2(i,j)=='G')
+                fv(i,j)='C';
+            else
+                fv(i,j)='G';
+            end
+        end
+    end
+end
+
+
+% ====================== FILE: DNA_jie.m ======================
+
+%% ×Óº¯Êı DNA½âÂë
+function fv=DNA_jie(array,num)
+[m,n]=size(array);
+A=zeros(m,n);           %Ô¤·ÖÅäÄÚ´æ
+if num==1 || num==2
+    for i=1:m
+        for j=1:n
+            if array(i,j)=='A'
+                A(i,j)=0;
+            elseif array(i,j)=='T'
+                A(i,j)=3;
+            elseif array(i,j)=='G'
+                if num==1
+                    A(i,j)=1;
+                else
+                    A(i,j)=2;
+                end
+            else
+                if num==1
+                    A(i,j)=2;
+                else
+                    A(i,j)=1;
+                end
+            end
+        end
+    end
+elseif num==3 || num==4
+    for i=1:m
+        for j=1:n
+            if array(i,j)=='A'
+                A(i,j)=1;
+            elseif array(i,j)=='T'
+                A(i,j)=2;
+            elseif array(i,j)=='G'
+                if num==3
+                    A(i,j)=0;
+                else
+                    A(i,j)=3;
+                end
+            else
+                if num==3
+                    A(i,j)=3;
+                else
+                    A(i,j)=0;
+                end
+            end
+        end
+    end
+elseif num==5 || num==6
+    for i=1:m
+        for j=1:n
+            if array(i,j)=='A'
+                A(i,j)=2;
+            elseif array(i,j)=='T'
+                A(i,j)=1;
+            elseif array(i,j)=='G'
+                if num==5
+                    A(i,j)=0;
+                else
+                    A(i,j)=3;
+                end
+            else
+                if num==5
+                    A(i,j)=3;
+                else
+                    A(i,j)=0;
+                end
+            end
+        end
+    end
+else                    %  num==7 || num==8
+    for i=1:m
+        for j=1:n
+            if array(i,j)=='A'
+                A(i,j)=3;
+            elseif array(i,j)=='T'
+                A(i,j)=0;
+            elseif array(i,j)=='G'
+                if num==7
+                    A(i,j)=1;
+                else
+                    A(i,j)=2;
+                end
+            else
+                if num==7
+                    A(i,j)=2;
+                else
+                    A(i,j)=1;
+                end
+            end
+        end
+    end
+end
+A1=A(:,1:m);
+A2=A(:,m+1:2*m);
+A3=A(:,2*m+1:3*m);
+A4=A(:,3*m+1:4*m);
+fv=A1*64+A2*16+A3*4+A4;
+end
+
+% ====================== FILE: Copy_of_Anti_clipping.m ======================
+
+function [Q_R,Q_G,Q_B,xx0,xx1,Q_jiami]=Copy_of_Anti_clipping(u,M,N,Q_R,Q_G,Q_B,I2,I3,SUM)
+xx0=sum(I2(:))/(255*SUM);     %GÍ¨µÀ£ºÆ½¾ù»Ò¶ÈÖµ£¬×÷ÎªÃÜÔ¿
+xx0=floor(xx0*10^4)/10^4;     %±£Áô4Î»Ğ¡Êı
+xx1=sum(I3(:))/(255*SUM);     %BÍ¨µÀ£ºÆ½¾ù»Ò¶ÈÖµ£¬×÷ÎªÃÜÔ¿
+xx1=floor(xx1*10^4)/10^4;     %±£Áô4Î»Ğ¡Êı
+ppx=zeros(1,M+1000);        %Ô¤·ÖÅäÄÚ´æ
+ppy=zeros(1,N+1000); 
+ppx(1)=xx0;
+ppy(1)=xx1;
+for i=1:M+999                 %½øĞĞSUM+999´ÎÑ­»·£¬¹²µÃµ½SUM+1000µã£¨°üÀ¨³õÖµ£©
+    ppx(i+1)=u*ppx(i)*(1-ppx(i));
+end
+for i=1:N+999                 %½øĞĞSUM+999´ÎÑ­»·£¬¹²µÃµ½SUM+1000µã£¨°üÀ¨³õÖµ£©
+    ppy(i+1)=u*ppy(i)*(1-ppy(i));
+end
+ppx=ppx(1001:length(ppx));            %È¥³ıÇ°1000µã£¬»ñµÃ¸üºÃµÄËæ»úĞÔ
+ppy=ppy(1001:length(ppy));
+
+[~,Ux]=sort(ppx,'descend');
+[~,Uy]=sort(ppy,'descend');
+
+for i=1:M
+    temp = Q_R(i,:);
+    Q_R(i,:) = Q_R(Ux(i),:);
+    Q_R(Ux(i),:) = temp;
+    temp = Q_G(i,:);
+    Q_G(i,:) = Q_G(Ux(i),:);
+    Q_G(Ux(i),:) = temp;
+    temp = Q_B(i,:);
+    Q_B(i,:) = Q_B(Ux(i),:);
+    Q_B(Ux(i),:) = temp;
+end
+
+for i=1:N
+    temp = Q_R(:,i);
+    Q_R(:,i) = Q_R(:,Uy(i));
+    Q_R(:,Uy(i)) = temp;
+    temp = Q_G(:,i);
+    Q_G(:,i) = Q_G(:,Uy(i));
+    Q_G(:,Uy(i)) = temp;
+    temp = Q_B(:,i);
+    Q_B(:,i) = Q_B(:,Uy(i));
+    Q_B(:,Uy(i)) = temp;
+end
+%{
+figure;imhist(Q_R);title('¼ÓÃÜºóRÍ¨µÀÖ±·½Í¼');
+axis([0 255 0 2000]);
+figure;imhist(Q_G);title('¼ÓÃÜºóGÍ¨µÀÖ±·½Í¼');
+axis([0 255 0 2000]);
+figure;imhist(Q_B);title('¼ÓÃÜºóBÍ¨µÀÖ±·½Í¼');
+axis([0 255 0 2000]);
+%}
+Q_jiami(:,:,1)=Q_R;
+Q_jiami(:,:,2)=Q_G;
+Q_jiami(:,:,3)=Q_B;
+% Q=imnoise(Q,'salt & pepper',0.1);   %¼ÓÈë10%µÄ½·ÑÎÔëÉù
+%{
+imwrite(Q_jiami,'../Ô­Ê¼¡¢¼ÓÃÜ¡¢½âÃÜÍ¼Æ¬/¼ÓÃÜºóµÄlena.png','png');        
+figure;imshow(Q_jiami);title('¼ÓÃÜºóÍ¼Æ¬');
+%}
+end
+
+% ====================== FILE: After_information_entropy.m ======================
+
+function [xxs2_R,xxs2_G,xxs2_B]=After_information_entropy(Q_R,Q_G,Q_B)
+T2_R=imhist(Q_R);
+S2_R=sum(T2_R);
+xxs2_R=0;
+%GÍ¨µÀ
+T2_G=imhist(Q_G);
+S2_G=sum(T2_G);
+xxs2_G=0;
+%BÍ¨µÀ
+T2_B=imhist(Q_B);
+S2_B=sum(T2_B);
+xxs2_B=0;
+for i=1:256
+    pp2_R=T2_R(i)/S2_R;
+    pp2_G=T2_G(i)/S2_G;
+    pp2_B=T2_B(i)/S2_B;
+    if pp2_R~=0
+        xxs2_R=xxs2_R-pp2_R*log2(pp2_R);
+    end
+    if pp2_G~=0
+        xxs2_G=xxs2_G-pp2_G*log2(pp2_G);
+    end
+    if pp2_B~=0
+        xxs2_B=xxs2_B-pp2_B*log2(pp2_B);
+    end
+end
+end
+
+% ====================== FILE: After_Correlation_analysis.m ======================
+
+function [RXY2_R,RXY2_G,RXY2_B]=After_Correlation_analysis(Q_R,Q_G,Q_B,NN,x1,y1)
+XX_R_SP=zeros(1,NN);YY_R_SP=zeros(1,NN);  %Ô¤·ÖÅäÄÚ´æ
+XX_G_SP=zeros(1,NN);YY_G_SP=zeros(1,NN);
+XX_B_SP=zeros(1,NN);YY_B_SP=zeros(1,NN);
+%´¹Ö±
+XX_R_CZ=zeros(1,NN);YY_R_CZ=zeros(1,NN);  %Ô¤·ÖÅäÄÚ´æ
+XX_G_CZ=zeros(1,NN);YY_G_CZ=zeros(1,NN);
+XX_B_CZ=zeros(1,NN);YY_B_CZ=zeros(1,NN);
+%¶Ô½ÇÏß
+XX_R_DJX=zeros(1,NN);YY_R_DJX=zeros(1,NN);  %Ô¤·ÖÅäÄÚ´æ
+XX_G_DJX=zeros(1,NN);YY_G_DJX=zeros(1,NN);
+XX_B_DJX=zeros(1,NN);YY_B_DJX=zeros(1,NN);
+for i=1:NN
+    %Ë®Æ½
+    XX_R_SP(i)=Q_R(x1(i),y1(i));
+    YY_R_SP(i)=Q_R(x1(i)+1,y1(i));
+    XX_G_SP(i)=Q_G(x1(i),y1(i));
+    YY_G_SP(i)=Q_G(x1(i)+1,y1(i));
+    XX_B_SP(i)=Q_B(x1(i),y1(i));
+    YY_B_SP(i)=Q_B(x1(i)+1,y1(i));
+    %´¹Ö±
+    XX_R_CZ(i)=Q_R(x1(i),y1(i));
+    YY_R_CZ(i)=Q_R(x1(i),y1(i)+1);
+    XX_G_CZ(i)=Q_G(x1(i),y1(i));
+    YY_G_CZ(i)=Q_G(x1(i),y1(i)+1);
+    XX_B_CZ(i)=Q_B(x1(i),y1(i));
+    YY_B_CZ(i)=Q_B(x1(i),y1(i)+1);
+    %¶Ô½ÇÏß
+    XX_R_DJX(i)=Q_R(x1(i),y1(i));
+    YY_R_DJX(i)=Q_R(x1(i)+1,y1(i)+1);
+    XX_G_DJX(i)=Q_G(x1(i),y1(i));
+    YY_G_DJX(i)=Q_G(x1(i)+1,y1(i)+1);
+    XX_B_DJX(i)=Q_B(x1(i),y1(i));
+    YY_B_DJX(i)=Q_B(x1(i)+1,y1(i)+1);
+end
+%{
+%Ë®Æ½
+figure;scatter(XX_R_SP,YY_R_SP,18,'filled');xlabel('RÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚË®Æ½·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñRÍ¨µÀË®Æ½ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_G_SP,YY_G_SP,18,'filled');xlabel('GÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚË®Æ½·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñGÍ¨µÀË®Æ½ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_B_SP,YY_B_SP,18,'filled');xlabel('BÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚË®Æ½·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñBÍ¨µÀË®Æ½ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+%´¹Ö±
+figure;scatter(XX_R_CZ,YY_R_CZ,18,'filled');xlabel('RÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ´¹Ö±·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñRÍ¨µÀ´¹Ö±ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_G_CZ,YY_G_CZ,18,'filled');xlabel('GÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ´¹Ö±·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñGÍ¨µÀ´¹Ö±ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_B_CZ,YY_B_CZ,18,'filled');xlabel('BÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ´¹Ö±·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñBÍ¨µÀ´¹Ö±ÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+%¶Ô½ÇÏß
+figure;scatter(XX_R_DJX,YY_R_DJX,18,'filled');xlabel('RÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ¶Ô½ÇÏß·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñRÍ¨µÀ¶Ô½ÇÏßÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_G_DJX,YY_G_DJX,18,'filled');xlabel('GÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ¶Ô½ÇÏß·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñGÍ¨µÀ¶Ô½ÇÏßÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+figure;scatter(XX_B_DJX,YY_B_DJX,18,'filled');xlabel('BÍ¨µÀËæ»úµãÏñËØ»Ò¶ÈÖµ');ylabel('Óë¸ÃµãÏàÁÚ¶Ô½ÇÏß·½ÏòÏñËØ»Ò¶ÈÖµ');title('¼ÓÃÜÍ¼ÏñBÍ¨µÀ¶Ô½ÇÏßÏàÁÚÔªËØÏà¹ØĞÔµãÍ¼');axis([0 255,0 255]);set(gca,'XTick',0:15:255);set(gca,'YTick',0:15:255);
+%RÍ¨µÀ
+%}
+Q_R=double(Q_R);
+EX2_R=0;EY2_SP_R=0;DX2_R=0;DY2_SP_R=0;COVXY2_SP_R=0;    %Ë®Æ½
+EY2_CZ_R=0;DY2_CZ_R=0;COVXY2_CZ_R=0;    %´¹Ö±
+EY2_DJX_R=0;DY2_DJX_R=0;COVXY2_DJX_R=0;   %¶Ô½ÇÏß
+%GÍ¨µÀ
+Q_G=double(Q_G);
+EX2_G=0;EY2_SP_G=0;DX2_G=0;DY2_SP_G=0;COVXY2_SP_G=0;    %Ë®Æ½
+EY2_CZ_G=0;DY2_CZ_G=0;COVXY2_CZ_G=0;    %´¹Ö±
+EY2_DJX_G=0;DY2_DJX_G=0;COVXY2_DJX_G=0;   %¶Ô½ÇÏß
+%BÍ¨µÀ
+Q_B=double(Q_B);
+EX2_B=0;EY2_SP_B=0;DX2_B=0;DY2_SP_B=0;COVXY2_SP_B=0;    %Ë®Æ½
+EY2_CZ_B=0;DY2_CZ_B=0;COVXY2_CZ_B=0;    %´¹Ö±
+EY2_DJX_B=0;DY2_DJX_B=0;COVXY2_DJX_B=0;   %¶Ô½ÇÏß
+for i=1:NN
+    %µÚÒ»¸öÏñËØµãµÄE£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßÊ±¼ÆËãµÃ³öµÄµÚÒ»¸öÏñËØµãµÄEÏàÍ¬£¬Í³Ò»ÓÃEX2±íÊ¾
+    EX2_R=EX2_R+Q_R(x1(i),y1(i));
+    EX2_G=EX2_G+Q_G(x1(i),y1(i));
+    EX2_B=EX2_B+Q_B(x1(i),y1(i));
+    %µÚ¶ş¸öÏñËØµãµÄE£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßµÄE·Ö±ğ¶ÔÓ¦EY2_SP¡¢EY2_CZ¡¢EY2_DJX
+    %RÍ¨µÀ
+    EY2_SP_R=EY2_SP_R+Q_R(x1(i),y1(i)+1);
+    EY2_CZ_R=EY2_CZ_R+Q_R(x1(i)+1,y1(i));
+    EY2_DJX_R=EY2_DJX_R+Q_R(x1(i)+1,y1(i)+1);
+    %GÍ¨µÀ
+    EY2_SP_G=EY2_SP_G+Q_G(x1(i),y1(i)+1);
+    EY2_CZ_G=EY2_CZ_G+Q_G(x1(i)+1,y1(i));
+    EY2_DJX_G=EY2_DJX_G+Q_G(x1(i)+1,y1(i)+1);
+    %BÍ¨µÀ
+    EY2_SP_B=EY2_SP_B+Q_B(x1(i),y1(i)+1);
+    EY2_CZ_B=EY2_CZ_B+Q_B(x1(i)+1,y1(i));
+    EY2_DJX_B=EY2_DJX_B+Q_B(x1(i)+1,y1(i)+1);
+end
+%Í³Ò»ÔÚÑ­»·Íâ³ıÒÔÏñËØµã¶ÔÊı1000£¬¿É¼õÉÙÔËËã´ÎÊı
+%RÍ¨µÀ
+EX2_R=EX2_R/NN;
+EY2_SP_R=EY2_SP_R/NN;
+EY2_CZ_R=EY2_CZ_R/NN;
+EY2_DJX_R=EY2_DJX_R/NN;
+%GÍ¨µÀ
+EX2_G=EX2_G/NN;
+EY2_SP_G=EY2_SP_G/NN;
+EY2_CZ_G=EY2_CZ_G/NN;
+EY2_DJX_G=EY2_DJX_G/NN;
+%BÍ¨µÀ
+EX2_B=EX2_B/NN;
+EY2_SP_B=EY2_SP_B/NN;
+EY2_CZ_B=EY2_CZ_B/NN;
+EY2_DJX_B=EY2_DJX_B/NN;
+
+for i=1:NN
+    %µÚÒ»¸öÏñËØµãµÄD£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßÊ±¼ÆËãµÃ³öµÚÒ»¸öÏñËØµãµÄDÏàÍ¬£¬Í³Ò»ÓÃDX2±íÊ¾
+    DX2_R=DX2_R+(Q_R(x1(i),y1(i))-EX2_R)^2;
+    DX2_G=DX2_G+(Q_G(x1(i),y1(i))-EX2_G)^2;
+    DX2_B=DX2_B+(Q_B(x1(i),y1(i))-EX2_B)^2;
+    %µÚ¶ş¸öÏñËØµãµÄD£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßµÄD·Ö±ğ¶ÔÓ¦DY2_SP¡¢DY2_CZ¡¢DY2_DJX
+    %RÍ¨µÀ
+    DY2_SP_R=DY2_SP_R+(Q_R(x1(i),y1(i)+1)-EY2_SP_R)^2;
+    DY2_CZ_R=DY2_CZ_R+(Q_R(x1(i)+1,y1(i))-EY2_CZ_R)^2;
+    DY2_DJX_R=DY2_DJX_R+(Q_R(x1(i)+1,y1(i)+1)-EY2_DJX_R)^2;
+    %GÍ¨µÀ
+    DY2_SP_G=DY2_SP_G+(Q_G(x1(i),y1(i)+1)-EY2_SP_G)^2;
+    DY2_CZ_G=DY2_CZ_G+(Q_G(x1(i)+1,y1(i))-EY2_CZ_G)^2;
+    DY2_DJX_G=DY2_DJX_G+(Q_G(x1(i)+1,y1(i)+1)-EY2_DJX_G)^2;
+    %BÍ¨µÀ
+    DY2_SP_B=DY2_SP_B+(Q_B(x1(i),y1(i)+1)-EY2_SP_B)^2;
+    DY2_CZ_B=DY2_CZ_B+(Q_B(x1(i)+1,y1(i))-EY2_CZ_B)^2;
+    DY2_DJX_B=DY2_DJX_B+(Q_B(x1(i)+1,y1(i)+1)-EY2_DJX_B)^2;
+    %Á½¸öÏàÁÚÏñËØµãÏà¹Øº¯ÊıµÄ¼ÆËã£¬Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏß
+    %RÍ¨µÀ
+    COVXY2_SP_R=COVXY2_SP_R+(Q_R(x1(i),y1(i))-EX2_R)*(Q_R(x1(i),y1(i)+1)-EY2_SP_R);
+    COVXY2_CZ_R=COVXY2_CZ_R+(Q_R(x1(i),y1(i))-EX2_R)*(Q_R(x1(i)+1,y1(i))-EY2_CZ_R);
+    COVXY2_DJX_R=COVXY2_DJX_R+(Q_R(x1(i),y1(i))-EX2_R)*(Q_R(x1(i)+1,y1(i)+1)-EY2_DJX_R);
+    %GÍ¨µÀ
+    COVXY2_SP_G=COVXY2_SP_G+(Q_G(x1(i),y1(i))-EX2_G)*(Q_G(x1(i),y1(i)+1)-EY2_SP_G);
+    COVXY2_CZ_G=COVXY2_CZ_G+(Q_G(x1(i),y1(i))-EX2_G)*(Q_G(x1(i)+1,y1(i))-EY2_CZ_G);
+    COVXY2_DJX_G=COVXY2_DJX_G+(Q_G(x1(i),y1(i))-EX2_G)*(Q_G(x1(i)+1,y1(i)+1)-EY2_DJX_G);
+    %BÍ¨µÀ
+    COVXY2_SP_B=COVXY2_SP_B+(Q_B(x1(i),y1(i))-EX2_B)*(Q_B(x1(i),y1(i)+1)-EY2_SP_B);
+    COVXY2_CZ_B=COVXY2_CZ_B+(Q_B(x1(i),y1(i))-EX2_B)*(Q_B(x1(i)+1,y1(i))-EY2_CZ_B);
+    COVXY2_DJX_B=COVXY2_DJX_B+(Q_B(x1(i),y1(i))-EX2_B)*(Q_B(x1(i)+1,y1(i)+1)-EY2_DJX_B);
+end
+%Í³Ò»ÔÚÑ­»·Íâ³ıÒÔÏñËØµã¶ÔÊı1000£¬¿É¼õÉÙÔËËã´ÎÊı
+%RÍ¨µÀ
+DX2_R=DX2_R/NN;
+DY2_SP_R=DY2_SP_R/NN;
+DY2_CZ_R=DY2_CZ_R/NN;
+DY2_DJX_R=DY2_DJX_R/NN;
+COVXY2_SP_R=COVXY2_SP_R/NN;
+COVXY2_CZ_R=COVXY2_CZ_R/NN;
+COVXY2_DJX_R=COVXY2_DJX_R/NN;
+%GÍ¨µÀ
+DX2_G=DX2_G/NN;
+DY2_SP_G=DY2_SP_G/NN;
+DY2_CZ_G=DY2_CZ_G/NN;
+DY2_DJX_G=DY2_DJX_G/NN;
+COVXY2_SP_G=COVXY2_SP_G/NN;
+COVXY2_CZ_G=COVXY2_CZ_G/NN;
+COVXY2_DJX_G=COVXY2_DJX_G/NN;
+%BÍ¨µÀ
+DX2_B=DX2_B/NN;
+DY2_SP_B=DY2_SP_B/NN;
+DY2_CZ_B=DY2_CZ_B/NN;
+DY2_DJX_B=DY2_DJX_B/NN;
+COVXY2_SP_B=COVXY2_SP_B/NN;
+COVXY2_CZ_B=COVXY2_CZ_B/NN;
+COVXY2_DJX_B=COVXY2_DJX_B/NN;
+%Ë®Æ½¡¢´¹Ö±¡¢¶Ô½ÇÏßµÄÏà¹ØĞÔ
+%RÍ¨µÀ
+RXY2_SP_R=COVXY2_SP_R/sqrt(DX2_R*DY2_SP_R);
+RXY2_CZ_R=COVXY2_CZ_R/sqrt(DX2_R*DY2_CZ_R);
+RXY2_DJX_R=COVXY2_DJX_R/sqrt(DX2_R*DY2_DJX_R);
+%GÍ¨µÀ
+RXY2_SP_G=COVXY2_SP_G/sqrt(DX2_G*DY2_SP_G);
+RXY2_CZ_G=COVXY2_CZ_G/sqrt(DX2_G*DY2_CZ_G);
+RXY2_DJX_G=COVXY2_DJX_G/sqrt(DX2_G*DY2_DJX_G);
+%BÍ¨µÀ
+RXY2_SP_B=COVXY2_SP_B/sqrt(DX2_B*DY2_SP_B);
+RXY2_CZ_B=COVXY2_CZ_B/sqrt(DX2_B*DY2_CZ_B);
+RXY2_DJX_B=COVXY2_DJX_B/sqrt(DX2_B*DY2_DJX_B);
+RXY2_R(1,1)=RXY2_SP_R;RXY2_R(1,2)=RXY2_CZ_R;RXY2_R(1,3)=RXY2_DJX_R;
+RXY2_G(1,1)=RXY2_SP_G;RXY2_G(1,2)=RXY2_CZ_G;RXY2_G(1,3)=RXY2_DJX_G;
+RXY2_B(1,1)=RXY2_SP_B;RXY2_B(1,2)=RXY2_CZ_B;RXY2_B(1,3)=RXY2_DJX_B;
+end
+
+% ====================== FILE: fobj.m ======================
+
+function fitness=fobj(RXY2_R,RXY2_G,RXY2_B)
+% %RXY2_R(1,1)=RXY2_SP_R;RXY2_R(1,2)=RXY2_CZ_R;RXY2_R(1,3)=RXY2_DJX_R;
+% RXY2_G(2,1)=RXY2_SP_G;RXY2_G(2,2)=RXY2_CZ_G;RXY2_G(2,3)=RXY2_DJX_G;
+% RXY2_B(3,1)=RXY2_SP_B;RXY2_B(3,2)=RXY2_CZ_B;RXY2_B(3,3)=RXY2_DJX_B;
+RXY2_SP_R=RXY2_R(1,1);RXY2_CZ_R=RXY2_R(1,2);RXY2_DJX_R=RXY2_R(1,3);
+RXY2_SP_G=RXY2_G(1,1);RXY2_CZ_G=RXY2_G(1,2);RXY2_DJX_G=RXY2_G(1,3);
+RXY2_SP_B=RXY2_B(1,1);RXY2_CZ_B=RXY2_B(1,2);RXY2_DJX_B=RXY2_B(1,3);
+fitness_R = RXY2_SP_R + RXY2_CZ_R + RXY2_DJX_R;  % ä¿®æ­£è¿™é‡Œ
+fitness_G=RXY2_SP_G+RXY2_CZ_G+RXY2_DJX_G;
+fitness_B=RXY2_SP_B+RXY2_CZ_B+RXY2_DJX_B;
+fitness=abs(fitness_R+fitness_G+fitness_B);
+end
+
+% ====================== FILE: main_jiemi.m ======================
+
+function Q_jiemi=main_jiemi(I,u,x0,X0,Y0,Z0,H0,M1,N1,xx0,xx1)
+%I=imread('en_169.tif','tif');           %¶ÁÈ¡Í¼ÏñĞÅÏ¢
+I1=I(:,:,1);     %RÍ¨µÀ
+I2=I(:,:,2);     %GÍ¨µÀ
+I3=I(:,:,3);     %BÍ¨µÀ
+[M,N]=size(I1);                      %½«Í¼ÏñµÄĞĞÁĞ¸³Öµ¸øM,N
+t=4;    %·Ö¿é´óĞ¡
+SUM=M*N;
+% u=3.9999;     %ÃÜÔ¿1£º¦Ì
+% xx0=0.3883;
+% xx1=0.4134;
+ppx=zeros(1,M+1000);        %Ô¤·ÖÅäÄÚ´æ
+ppy=zeros(1,N+1000); 
+ppx(1)=xx0;
+ppy(1)=xx1;
+for i=1:M+999                 %½øĞĞM+999´ÎÑ­»·£¬¹²µÃµ½M+1000µã£¨°üÀ¨³õÖµ£©
+    ppx(i+1)=u*ppx(i)*(1-ppx(i));
+end
+for i=1:N+999                 %½øĞĞM+999´ÎÑ­»·£¬¹²µÃµ½M+1000µã£¨°üÀ¨³õÖµ£©
+    ppy(i+1)=u*ppy(i)*(1-ppy(i));
+end
+ppx=ppx(1001:length(ppx));            %È¥³ıÇ°1000µã£¬»ñµÃ¸üºÃµÄËæ»úĞÔ
+ppy=ppy(1001:length(ppy));
+
+[~,Ux]=sort(ppx,'descend');
+[~,Uy]=sort(ppy,'descend');
+
+for i=N:-1:1
+    temp = I1(:,i);
+    I1(:,i) = I1(:,Uy(i));
+    I1(:,Uy(i)) = temp;
+    temp = I2(:,i);
+    I2(:,i) = I2(:,Uy(i));
+    I2(:,Uy(i)) = temp;
+    temp = I3(:,i);
+    I3(:,i) = I3(:,Uy(i));
+    I3(:,Uy(i)) = temp;
+end
+for i=M:-1:1
+    temp = I1(i,:);
+    I1(i,:) = I1(Ux(i),:);
+    I1(Ux(i),:) = temp;
+    temp = I2(i,:);
+    I2(i,:) = I2(Ux(i),:);
+    I2(Ux(i),:) = temp;
+    temp = I3(i,:);
+    I3(i,:) = I3(Ux(i),:);
+    I3(Ux(i),:) = temp;
+end
+%% 2.²úÉúLogistic»ìãçĞòÁĞ
+% u=3.990000000000001; %ÃÜÔ¿Ãô¸ĞĞÔ²âÊÔ  10^-15
+%u=3.99;%ÃÜÔ¿£ºLogistic²ÎÊı¦Ì
+% x0=0.7067000000000001; %ÃÜÔ¿Ãô¸ĞĞÔ²âÊÔ  10^-16
+% x0=0.5475; %ÃÜÔ¿£ºLogistic³õÖµx0
+% x0=0.3462;            %homeÍ¼Æ¬
+p=zeros(1,SUM+1000);
+p(1)=x0;
+for i=1:SUM+999                        %½øĞĞSUM+999´ÎÑ­»·£¬²úÉúSUM+1000¸öÊı¾İ
+    p(i+1)=u*p(i)*(1-p(i));
+end
+p=p(1001:length(p));
+
+%% 3.½«pĞòÁĞ±ä»»µ½0~255·¶Î§ÄÚÕûÊı£¬×ª»»³ÉM*NµÄ¶şÎ¬¾ØÕóR
+p=mod(round(p*10^4),256);
+R=reshape(p,N,M)';  %×ª³ÉMĞĞNÁĞ
+
+%% 4.Çó½â»ìãç·½³Ì
+%ÇóËÄ¸ö³õÖµX0,Y0,Z0,H0
+r=(M/t)*(N/t);
+% X0=0.5008000000000001;        %ÃÜÔ¿Ãô¸ĞĞÔ²âÊÔ
+% X0=1;
+% Y0=0.3562;
+% Z0=-0.4482;
+% H0=-0.6109;
+% X0=0.5056;        %homeÍ¼Æ¬
+% Y0=0.505;
+% Z0=0.4564;
+% H0=0.3062;
+A=chen_output(X0,Y0,Z0,H0,r);
+X=A(:,1);
+X=X(3002:length(X));
+Y=A(:,2);
+Y=Y(3002:length(Y));
+Z=A(:,3);
+Z=Z(3002:length(Z));
+H=A(:,4);
+H=H(3002:length(H));
+
+%% 5.DNA±àÂë
+%X,Y·Ö±ğ¾ö¶¨IºÍRµÄDNA±àÂë·½Ê½£¬ÓĞ8ÖÖ£¬1~8
+X=mod(round(X*10^4),8)+1;
+Y=mod(round(Y*10^4),8)+1;
+Z=mod(round(Z*10^4),4);
+Z(Z==0)=4;      %¼Ó¼õ·¨»¥»»
+Z(Z==1)=0;
+Z(Z==4)=1;
+H=mod(round(H*10^4),8)+1;
+e=N/t;
+for i=r:-1:2
+    Q1_R=DNA_bian(fenkuai(t,I1,i),H(i));
+    Q1_G=DNA_bian(fenkuai(t,I2,i),H(i));
+    Q1_B=DNA_bian(fenkuai(t,I3,i),H(i));
+    
+    Q1_last_R=DNA_bian(fenkuai(t,I1,i-1),H(i-1));
+    Q1_last_G=DNA_bian(fenkuai(t,I2,i-1),H(i-1));
+    Q1_last_B=DNA_bian(fenkuai(t,I3,i-1),H(i-1));
+    
+    Q2_R=DNA_yunsuan(Q1_R,Q1_last_R,Z(i));        %À©É¢Ç°
+    Q2_G=DNA_yunsuan(Q1_G,Q1_last_G,Z(i));
+    Q2_B=DNA_yunsuan(Q1_B,Q1_last_B,Z(i));
+
+    Q3=DNA_bian(fenkuai(t,R,i),Y(i));
+    
+    Q4_R=DNA_yunsuan(Q2_R,Q3,Z(i));
+    Q4_G=DNA_yunsuan(Q2_G,Q3,Z(i));
+    Q4_B=DNA_yunsuan(Q2_B,Q3,Z(i));
+    
+    xx=floor(i/e)+1;
+    yy=mod(i,e);
+    if yy==0
+        xx=xx-1;
+        yy=e;
+    end
+    I1((xx-1)*t+1:xx*t,(yy-1)*t+1:yy*t)=DNA_jie(Q4_R,X(i));
+    I2((xx-1)*t+1:xx*t,(yy-1)*t+1:yy*t)=DNA_jie(Q4_G,X(i));
+    I3((xx-1)*t+1:xx*t,(yy-1)*t+1:yy*t)=DNA_jie(Q4_B,X(i));
+end
+Q5_R=DNA_bian(fenkuai(t,I1,1),H(1));
+Q5_G=DNA_bian(fenkuai(t,I2,1),H(1));
+Q5_B=DNA_bian(fenkuai(t,I3,1),H(1));
+
+Q6=DNA_bian(fenkuai(t,R,1),Y(1));
+
+Q7_R=DNA_yunsuan(Q5_R,Q6,Z(1));
+Q7_G=DNA_yunsuan(Q5_G,Q6,Z(1));
+Q7_B=DNA_yunsuan(Q5_B,Q6,Z(1));
+
+I1(1:t,1:t)=DNA_jie(Q7_R,X(1));
+I2(1:t,1:t)=DNA_jie(Q7_G,X(1));
+I3(1:t,1:t)=DNA_jie(Q7_B,X(1));
+
+Q_jiemi(:,:,1)=uint8(I1);
+Q_jiemi(:,:,2)=uint8(I2);
+Q_jiemi(:,:,3)=uint8(I3);
+
+%% 6¡¢È¥³ı¼ÓÃÜÊ±²¹µÄÁã
+% M1=0;   %¼ÓÃÜÊ±²¹ÁãµÄ²ÎÊı£¬M1=mod(M,t);×÷ÎªÃÜÔ¿
+% N1=0;   %¼ÓÃÜÊ±²¹ÁãµÄ²ÎÊı£¬N1=mod(N,t);×÷ÎªÃÜÔ¿
+if M1~=0
+    Q_jiemi=Q_jiemi(1:M-t+M1,:,:);
+end
+if N1~=0
+    Q_jiemi=Q_jiemi(:,1:N-t+N1,:);
+end
+
+figure;imhist(Q_jiemi(:,:,1));
+figure;imhist(Q_jiemi(:,:,2));
+figure;imhist(Q_jiemi(:,:,3));
+
+%% ±£´æÍ¼Æ¬
+
+
+%title('½âÃÜºóÍ¼Æ¬');
+end

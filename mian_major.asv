@@ -1,0 +1,247 @@
+%% ======================= main.m =======================
+% 彩色图像加密-解密与评估（采用 HSADE_ImprovedQUATRE 优化参数）
+% 终止条件：最大函数评估次数 MaxFEs
+% -------------------------------------------------------
+clear; close all; clc;
+
+%% =================== 文件名配置区域 ===================
+% ★★★ 只需要在这里修改一次即可 ★★★
+BASE_IMAGE_NAME = 'kodim23';   % 基础图像名称（不含扩展名）image_Baboon512rgb image_Peppers512rgb kodim23
+IMAGE_EXT       = 'png';         % 图像扩展名
+INPUT_FOLDER    = '';            % 输入文件夹路径（空表示当前目录）
+OUTPUT_FOLDER   = '';            % 输出文件夹路径（空表示当前目录）
+
+% 自动生成所有相关文件名
+if ~isempty(INPUT_FOLDER) && ~endsWith(INPUT_FOLDER, filesep)
+    INPUT_FOLDER = [INPUT_FOLDER, filesep];
+end
+if ~isempty(OUTPUT_FOLDER) && ~endsWith(OUTPUT_FOLDER, filesep)
+    OUTPUT_FOLDER = [OUTPUT_FOLDER, filesep];
+end
+
+% 构建完整文件路径
+ORIGINAL_IMAGE  = [INPUT_FOLDER, BASE_IMAGE_NAME, '.', IMAGE_EXT];
+ENCRYPTED_IMAGE = [OUTPUT_FOLDER, 'ESAO_AMSSen_', BASE_IMAGE_NAME, '.', IMAGE_EXT];
+DECRYPTED_IMAGE = [OUTPUT_FOLDER, 'ESAO_AMSSede_', BASE_IMAGE_NAME, '.', IMAGE_EXT];
+LOG_FILE        = [OUTPUT_FOLDER, 'ESAO_AMSSeimage_', BASE_IMAGE_NAME, '_results_diary.txt'];
+
+% 显示配置信息
+fprintf('========== 文件配置信息 ==========\n');
+fprintf('原始图像: %s\n', ORIGINAL_IMAGE);
+fprintf('加密图像: %s\n', ENCRYPTED_IMAGE);
+fprintf('解密图像: %s\n', DECRYPTED_IMAGE);
+fprintf('日志文件: %s\n', LOG_FILE);
+fprintf('===================================\n\n');
+
+%% 0) 读图与通道分离
+if ~exist(ORIGINAL_IMAGE, 'file')
+    error('错误：找不到图像文件 "%s"', ORIGINAL_IMAGE);
+end
+
+I  = imread(ORIGINAL_IMAGE);   % 原始 RGB 图像
+I1 = I(:,:,1);  % R
+I2 = I(:,:,2);  % G
+I3 = I(:,:,3);  % B
+
+% 可视化原始通道直方图
+figure; imhist(I1); title('原始图片R通道直方图');
+figure; imhist(I2); title('原始图片G通道直方图');
+figure; imhist(I3); title('原始图片B通道直方图');
+
+% 尺寸信息
+[M0, N0] = size(I1);
+t        = 4;                 % 分块大小
+
+%% 1) 原始图像信息熵与相关性
+[xxs1_R, xxs1_G, xxs1_B] = Calculate_information_entropy(I1, I2, I3);
+NN = 5000;   % 相关性采样对数
+[RXY1_SP_R,RXY1_CZ_R,RXY1_DJX_R, ...
+ RXY1_SP_G,RXY1_CZ_G,RXY1_DJX_G, ...
+ RXY1_SP_B,RXY1_CZ_B,RXY1_DJX_B, x1, y1] = Orginal_Correlation_analysis(NN, M0, N0, I1, I2, I3);
+
+%% 2) 补零到可被 t 整除的尺寸（用于优化）
+[I1_pad, I2_pad, I3_pad, M1, N1] = zero_padding(M0, N0, I1, I2, I3, t);
+[M, N] = size(I1_pad);                 % 补零后的尺寸
+SUM    = M * N;                        % 像素总数
+
+%% 3) Logistic 混沌序列与随机矩阵 R（仅用于优化评估）
+u  = 3.9999;                                   % Logistic 参数
+x0 = (sum(I1_pad(:)) + sum(I2_pad(:))) / (255*SUM*2);  % 初值（与像素相关）
+x0 = floor(x0*1e4)/1e4;                        % 保留 4 位小数
+
+p      = zeros(1, SUM+1000);
+p(1)   = x0;
+for i = 1:SUM+999
+    p(i+1) = u * p(i) * (1 - p(i));
+end
+p = p(1001:end);                    % 丢弃前 1000 个以改善随机性
+p = mod(round(p*1e4), 256);         % 映射到 0~255
+R = reshape(p, N, M)';              % M×N 随机矩阵（uint8 掩码的来源）
+
+%% 4) —— 优化算法：HSADE_ImprovedQUATRE（取代 SCA） ——
+dim = 4;
+LB  = -ones(1, dim);
+UB  =  ones(1, dim);
+
+MaxFEs = 200;   % 最大评估次数
+
+% 适应度：给定参数 x → 一次快速加密（不做抗裁剪）→ 相关性 → fobj
+FUN = @(x) local_encrypt_fitness(x, M, N, t, I1_pad, I2_pad, I3_pad, SUM, R, u, NN, x1, y1, @fobj);
+
+[Best_pos, Best_val, CE, NFEs, SN] = ESAO(FUN, dim, UB, LB, MaxFEs);
+
+%% 5) 用最优参数对原图进行一次完整加密（封装到 encrypt_once）
+[Q_jiami, Q_R, Q_G, Q_B, key] = encrypt_once(I, t, u, Best_pos);
+
+%% 6) 加密后信息熵与相关性
+[xxs2_R, xxs2_G, xxs2_B] = After_information_entropy(Q_R, Q_G, Q_B);
+[RXY2_R, RXY2_G, RXY2_B] = After_Correlation_analysis(Q_R, Q_G, Q_B, NN, x1, y1);
+fitness = fobj(RXY2_R, RXY2_G, RXY2_B);
+
+% 展开三方向相关性
+RXY2_SP_R = RXY2_R(1,1);  RXY2_CZ_R = RXY2_R(1,2);  RXY2_DJX_R = RXY2_R(1,3);
+RXY2_SP_G = RXY2_G(1,1);  RXY2_CZ_G = RXY2_G(1,2);  RXY2_DJX_G = RXY2_G(1,3);
+RXY2_SP_B = RXY2_B(1,1);  RXY2_CZ_B = RXY2_B(1,2);  RXY2_DJX_B = RXY2_B(1,3);
+
+%% 7) NPCR / UACI 评价（差分攻击指标）
+% 构造只差一个像素的明文图像，然后使用同一组最优参数再次加密
+I_perturb = I;
+% 示例：翻转第一个像素 R 通道的最低位
+I_perturb(1,1,1) = bitxor(I_perturb(1,1,1), 1);
+
+[Q_jiami2, ~, ~, ~, ~] = encrypt_once(I_perturb, t, u, Best_pos);
+
+[NPCR_val, UACI_val] = NPCR_UACI(Q_jiami, Q_jiami2);
+fprintf('NPCR(整体) = %.4f %%\n', NPCR_val);
+fprintf('UACI(整体) = %.4f %%\n', UACI_val);
+
+%% 8) 可视化对比
+figure('Position',[284 214 1200 400]);
+subplot(2,4,1);
+imshow(I);
+title('Plain Image');
+subplot(2,4,2);
+imhist(I1);
+title('Ch1 Channel Histogram of Plain Image');
+axis([0 255 0 2000]);
+subplot(2,4,3);
+imhist(I2);
+title('Ch2 Channel Histogram of Plain Image');
+axis([0 255 0 2000]);
+subplot(2,4,4);
+imhist(I3);
+title('Ch3 Channel Histogram of Plain Image');
+axis([0 255 0 2000]);
+
+subplot(2,4,5);
+imshow(Q_jiami);
+title('Cipher Image');
+subplot(2,4,6);
+imhist(Q_R);
+title('Ch1 Channel Histogram of Cipher Image');
+axis([0 255 0 2000]);
+subplot(2,4,7);
+imhist(Q_G);
+title('Ch2 Channel Histogram of Cipher Image');
+axis([0 255 0 2000]);
+subplot(2,4,8);
+imhist(Q_B);
+title('Ch3 Channel Histogram of Cipher Image');
+axis([0 255 0 2000]);
+
+% 保存加密图
+imwrite(Q_jiami, ENCRYPTED_IMAGE);
+fprintf('加密图像已保存至: %s\n', ENCRYPTED_IMAGE);
+figure; imshow(Q_jiami); title('加密后图片');
+
+%% 9) 组织密钥并写日志（包含 NPCR、UACI）
+% 真实用于解密的参数（来自 encrypt_once 返回的 key）
+u_1   = key.u;
+x0_1  = key.x0;
+X0_1  = key.X0;
+Y0_1  = key.Y0;
+Z0_1  = key.Z0;
+H0_1  = key.H0;
+M1_1  = key.M1;
+N1_1  = key.N1;
+xx0_1 = key.xx0;
+xx1_1 = key.xx1;
+
+% 仅用于文本展示：×10000 后转字符串（避免过短显示）
+u_v   = num2str(u_1   *10000);
+x0_v  = num2str(x0_1  *10000);
+X0_v  = num2str(X0_1  *10000);
+Y0_v  = num2str(Y0_1  *10000);
+Z0_v  = num2str(Z0_1  *10000);
+H0_v  = num2str(H0_1  *10000);
+M1_v  = num2str(M1_1  *10000);
+N1_v  = num2str(N1_1  *10000);
+xx0_v = num2str(xx0_1 *10000);
+xx1_v = num2str(xx1_1 *10000);
+
+key_str = [u_v,' - ',x0_v,' - ',X0_v,' - ',Y0_v,' - ',Z0_v,' - ',H0_v, ...
+           ' - ',M1_v,' - ',N1_v,' - ',xx0_v,' - ',xx1_v];
+
+% 写入日志文件 
+diary(LOG_FILE); diary on;
+disp(['========== 图像 "', BASE_IMAGE_NAME, '" 加密结果 ==========']);
+disp('加密成功');
+disp('密钥（显示为参数×10000后的字符串）：');
+disp(['密钥1：μ=',u_v,' 密钥2：x0=',x0_v,' 密钥3：x(0)=',X0_v,' 密钥4：y(0)=',Y0_v,' 密钥5：z(0)=',Z0_v]);
+disp(['密钥6：h(0)=',H0_v,' 密钥7：M1=',M1_v,' 密钥8：N1=',N1_v,' 密钥9：xx0=',xx0_v,' 密钥10：xx1=',xx1_v]);
+
+disp('信息熵：');
+disp(['原始图片R通道信息熵=',num2str(xxs1_R),' 原始图片G通道信息熵=',num2str(xxs1_G),' 原始图片B通道信息熵=',num2str(xxs1_B)]);
+disp(['加密图片R通道信息熵=',num2str(xxs2_R),' 加密图片G通道信息熵=',num2str(xxs2_G),' 加密图片B通道信息熵=',num2str(xxs2_B)]);
+
+disp('R通道相关性：');
+disp(['原始 R：水平=',num2str(RXY1_SP_R),' 垂直=',num2str(RXY1_CZ_R),' 对角=',num2str(RXY1_DJX_R)]);
+disp(['加密 R：水平=',num2str(RXY2_SP_R),' 垂直=',num2str(RXY2_CZ_R),' 对角=',num2str(RXY2_DJX_R)]);
+
+disp('G通道相关性：');
+disp(['原始 G：水平=',num2str(RXY1_SP_G),' 垂直=',num2str(RXY1_CZ_G),' 对角=',num2str(RXY1_DJX_G)]);
+disp(['加密 G：水平=',num2str(RXY2_SP_G),' 垂直=',num2str(RXY2_CZ_G),' 对角=',num2str(RXY2_DJX_G)]);
+
+disp('B通道相关性：');
+disp(['原始 B：水平=',num2str(RXY1_SP_B),' 垂直=',num2str(RXY1_CZ_B),' 对角=',num2str(RXY1_DJX_B)]);
+disp(['加密 B：水平=',num2str(RXY2_SP_B),' 垂直=',num2str(RXY2_CZ_B),' 对角=',num2str(RXY2_DJX_B)]);
+
+disp('差分攻击指标：');
+disp(['NPCR(整体) = ', num2str(NPCR_val,'%.4f'), ' %']);
+disp(['UACI(整体) = ', num2str(UACI_val,'%.4f'), ' %']);
+
+disp(['最终适应度（fobj）=', num2str(fitness,'%.6e')]);
+disp(['优化算法评估次数 NFEs=', num2str(NFEs), '，GS/LS 成功次数=', num2str(SN(1)), '/', num2str(SN(2))]);
+disp('==============================================');
+diary off;
+fprintf('日志已保存至: %s\n', LOG_FILE);
+
+%% 10) 解密与展示
+if ~exist(ENCRYPTED_IMAGE, 'file')
+    error('错误：找不到加密图像文件 "%s"', ENCRYPTED_IMAGE);
+end
+
+I_en   = imread(ENCRYPTED_IMAGE);
+Q_jiemi = main_jiemi(I_en, u_1, x0_1, X0_1, Y0_1, Z0_1, H0_1, M1_1, N1_1, xx0_1, xx1_1);
+imwrite(Q_jiemi, DECRYPTED_IMAGE);
+fprintf('解密图像已保存至: %s\n', DECRYPTED_IMAGE);
+
+disp('用于解密的真实密钥参数如下（未×10000）：');
+disp(['μ=',num2str(u_1),'  x0=',num2str(x0_1),'  x(0)=',num2str(X0_1), ...
+      '  y(0)=',num2str(Y0_1),'  z(0)=',num2str(Z0_1),'  h(0)=',num2str(H0_1)]);
+disp(['M1=',num2str(M1_1),'  N1=',num2str(N1_1),'  xx0=',num2str(xx0_1),'  xx1=',num2str(xx1_1)]);
+disp('解密完成');
+figure; imshow(Q_jiemi); title('解密后图片');
+
+
+%% =================== 局部函数：适应度评估 ===================
+function fit = local_encrypt_fitness(x, M, N, t, I1, I2, I3, SUM, R, u, NN, x1, y1, fobj_handle)
+    % 给定候选参数 x：
+    % 1) 生成 Chen 超混沌序列
+    [X, Y, Z, H, r, ~, ~, ~, ~] = output(x, M, N, t, I1, I2, I3, SUM);
+    % 2) DNA 编码得到加密通道（为了加速评估，此处不做抗裁剪）
+    [Q_R, Q_G, Q_B] = DNA_code(N, R, t, X, Y, Z, H, I1, I2, I3, r);
+    % 3) 相关性分析并压缩为标量适应度
+    [RXY2_R, RXY2_G, RXY2_B] = After_Correlation_analysis(Q_R, Q_G, Q_B, NN, x1, y1);
+    fit = fobj_handle(RXY2_R, RXY2_G, RXY2_B);  % 越小越好
+end
