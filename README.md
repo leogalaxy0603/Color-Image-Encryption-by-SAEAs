@@ -137,5 +137,4 @@ Add the seed before the first random operation if deterministic runs are require
 
 ## License
 
-No license file is currently included. Before public release, add a license file that matches your intended usage and redistribution terms.
-
+This project is released under the MIT License. See `LICENSE` for details.
